@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Duolingo HearEverything
 // @namespace    http://tampermonkey.net/
-// @version      0.63
+// @version      0.62.1
 // @description  Reads aloud most sentences in Duo's challenges.
 // @author       Esh
 // @match        https://*.duolingo.com/*
@@ -10,26 +10,25 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-const VERSION = '0.63 --- 1 ---';
+const VERSION = '0.62.1 --- 1 ---';
 
 const LOG_STRING = 'Duolingo HearEverything: ';
-const buttonPosition = 'bottom'; // bottom / top allowed
 let voiceSelect;
-let config = {};
+const config = {};
 const DEBUG = false;
 // for config mouse hover
 let hover = true;
 
-let synth = window.speechSynthesis;
+const synth = window.speechSynthesis;
 let voices = [];
 let newPage = false;
 let addedSpeech = false;
-let challengesUrls = [];
-let challengesReads = [];
+const challengesUrls = [];
+const challengesReads = [];
 let timeout;
 let howlPlay = false;
 
-let speakerButton = `
+const speakerButton = `
   <a class="_3UpNo _3EXrQ _2VrUB" data-test="speaker-button" title="Listen" id="speak">
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 94 73" width="94" height="73" preserveAspectRatio="xMidYMid meet" style="padding-left: 20%; width: 80%; height: 100%; transform: translate3d(0px, 0px, 0px);">
     <defs>
@@ -64,12 +63,6 @@ let speakerButton = `
 `;
 
 // Element definitions
-const WRONG_ANSWER_CLASS = '._1UqAr._1sqiF';
-const RIGHT_ANSWER_CLASS = '._1UqAr._1Nmv6';
-const RIGHT_CLASS = '._1Nmv6';
-const WRONG_CLASS = '._1sqiF';
-const ANSWER_HEADLINE = '._1x6Dk';
-const ANSWER_CONTAINER = '._2ez4I';
 const DIALOGUE_SPEAKER_CLASS = '_29e-M _39MJv _2Hg6H';
 
 // currently used
@@ -87,33 +80,23 @@ const WORD_BANK = 'word-bank'; // if exists it's tap instead of keyboard (challe
 const WORD_BANK_QS = '[data-test="' + WORD_BANK + '"]';
 const TRANSLATE_INPUT = 'challenge-translate-input';
 const TRANSLATE_INPUT_QS = '[data-test="' + TRANSLATE_INPUT + '"]';
-// const SPEAKER_BUTTON = 'speaker-button';
-// const SPEAKER_BUTTON_QS = '[data-test="' + SPEAKER_BUTTON + '"]';
 const SPEAKER_BUTTON = '._1KXUd._1I13x._2kfEr._1nlVc._2fOC9.UCrz7.t5wFJ';
 const SPEAKER_BUTTON_QS = SPEAKER_BUTTON;
-// const HINT_SENTENCE = 'hint-sentence';
-// const HINT_SENTENCE_QS = '[data-test="' + HINT_SENTENCE + '"]';
 const HINT_SENTENCE = '._29e-M._39MJv._2Hg6H';
 const HINT_SENTENCE_QS = HINT_SENTENCE;
-// const HINT_SENTENCE_CTC = '._3NgMa._2Hg6H'; // hint sentence replacement for challenge tap complete
-// const HINT_SENTENCE_CTC_QS = HINT_SENTENCE_CTC;
 const CHALLENGE_JUDGE = 'challenge-judge-text';
 const CHALLENGE_JUDGE_QS = '[data-test="' + CHALLENGE_JUDGE + '"]';
 const CHALLENGE_JUDGE_INTRO = 'hint-token';
 const CHALLENGE_JUDGE_INTRO_QS = '[data-test="' + CHALLENGE_JUDGE_INTRO + '"]';
-// const FORM_PROMPT = 'challenge-form-prompt';
-// const FORM_PROMPT_QS = '[data-test="' + FORM_PROMPT + '"]';
 const FORM_PROMPT = '._2SfAl._2Hg6H';
 const FORM_PROMPT_QS = FORM_PROMPT;
-// const CHALLENGE_CHOICE = 'challenge-choice';
-// const CHALLENGE_CHOICE_QS = '[data-test="' + CHALLENGE_CHOICE + '"]';
 const RIGHT_OPTION_QS = '[aria-checked="true"] div';
 const TEXT_INPUT = 'challenge-text-input';
 const TEXT_INPUT_QS = '[data-test="' + TEXT_INPUT + '"]';
 const SPEAK_INTRO = 'speakIntro';
 const SPEAK_INTRO_QS = '#' + SPEAK_INTRO;
-const NEXT_BUTTON = 'player-next';
-const NEXT_BUTTON_QS = '[data-test="' + NEXT_BUTTON + '"]';
+// const NEXT_BUTTON = 'player-next';
+// const NEXT_BUTTON_QS = '[data-test="' + NEXT_BUTTON + '"]';
 const HINT_TOKEN = 'hint-token';
 const HINT_TOKEN_QS = '[data-test="' + HINT_TOKEN + '"]';
 
@@ -131,16 +114,13 @@ const SPEAK = 'challenge-speak';
 const LISTEN_TAP = 'challenge-listenTap';
 const LISTEN = 'challenge-listen';
 
-// duo reads aloud
-const SELECT_TRANSCRIPTION = 'challenge-selectTranscription';
-
 // allowed challenge types
-const TEST = [FORM, TRANSLATE, DIALOGUE, GAP_FILL, COMPLETE_REVERSE_TRANSLATION, TAP_COMPLETE, LISTEN_COMPREHENSION, READ_COMPREHENSION, NAME, SPEAK, LISTEN_TAP, LISTEN];
+const ALLOW_LISTEN_BUTTON = [FORM, TRANSLATE, DIALOGUE, GAP_FILL, COMPLETE_REVERSE_TRANSLATION, TAP_COMPLETE, LISTEN_COMPREHENSION, READ_COMPREHENSION, NAME, SPEAK, LISTEN_TAP, LISTEN];
 // challenges where duo has to read
-const NO_MUTE = [LISTEN, SELECT_TRANSCRIPTION, GAP_FILL, LISTEN_TAP, LISTEN_COMPREHENSION];
-var buttonDisabled = true;
+// const NO_MUTE = [LISTEN, SELECT_TRANSCRIPTION, GAP_FILL, LISTEN_TAP, LISTEN_COMPREHENSION];
+// let buttonDisabled = true;
 
-function debug(s) {
+function debug (s) {
   console.debug(LOG_STRING + s);
 }
 
@@ -148,18 +128,16 @@ function debug(s) {
 // intercept xmlhttprequest to get session json and extract challenges
 (function (open) {
   XMLHttpRequest.prototype.open = function () {
-    this.addEventListener("readystatechange", function () {
+    this.addEventListener('readystatechange', function () {
       if (this.readyState === 4 && this.responseURL.includes('sessions')) {
         if (this.response.challenges) {
-          this.response.challenges.map((challenge) => {
+          this.response.challenges.forEach((challenge) => {
             if (typeof challenge.tts !== 'undefined') {
               challengesUrls.push(challenge.tts);
               challengesReads.push(challenge.prompt);
             }
           });
         }
-        // console.log(challengesUrls);
-        // console.log(challengesReads);
       }
     }, false);
     open.apply(this, arguments);
@@ -170,17 +148,17 @@ function debug(s) {
 // Intercept Howl.play (which plays the sound over Howl.js).
 // of course the linter doesn't know the object Howl, but it is there ;)
 (function (play) {
+  // eslint-disable-next-line no-undef
   Howl.prototype.play = function () {
     if (config.he_muteduo) {
       debug('intercepting Duo speaking');
-      //if (challengesUrls.includes(this._src)) {
-      let read = challengesReads[challengesUrls.indexOf(this._src)];
+      const read = challengesReads[challengesUrls.indexOf(this._src)];
       if (DEBUG) document.querySelector('#mySentence').innerText = read;
-      if (typeof read != 'undefined') {
+      if (typeof read !== 'undefined') {
         debug('read = ' + read);
         howlPlay = true;
         clearTimeout(timeout);
-        let utter = generateUtter(read);
+        const utter = generateUtter(read);
         synth.cancel();
         synth.speak(utter);
       } else {
@@ -189,46 +167,39 @@ function debug(s) {
     } else {
       play.apply(this, arguments);
     }
-  }
+  };
+// eslint-disable-next-line no-undef
 })(Howl.prototype.play);
 
 window.onload = function () {
   'use strict';
   debug(VERSION);
-  // console.log('---------------------onload-------------------------');
   voices = window.speechSynthesis.getVoices();
-  //debug(voices);
-  //setVoice();
   readConfig();
   new MutationObserver(start).observe(document.body, {
-    // attributes: true,
     childList: true,
     subtree: true
   });
   debug('MutationObserver running');
-}
+};
 
-function setVoice() {
+function setVoice () {
   voiceSelect = GM_getValue('voiceSelect', 1000);
-  //debug('stored voice = ' + voiceSelect);
-  var duoState = JSON.parse(localStorage.getItem('duo.state'));
+  const duoState = JSON.parse(localStorage.getItem('duo.state'));
   config.lang = duoState.user.learningLanguage;
 
-  if (voiceSelect == 1000) {
+  if (voiceSelect === 1000) {
     for (let i = 0; i < voices.length; i++) {
       if (voices[i].lang.includes(config.lang)) {
         voiceSelect = i;
-        //debug('auto set voice');
       }
     }
   }
-  //debug(`voice = ${voiceSelect}, learning language = ${config.lang}`);
 }
 
 // toggles visibility
-function togglePopout(id) {
-  let popout = document.getElementById(id);
-  // popout.style.display === "none" ? popout.style.display = "block" : popout.style.display = "none";
+function togglePopout (id) {
+  const popout = document.getElementById(id);
   if (popout.style.display === 'none') {
     popout.style.display = 'block';
     document.addEventListener('click', closePopout);
@@ -242,24 +213,22 @@ function togglePopout(id) {
   }
 }
 
-function setHover() {
+function setHover () {
   hover = true;
-  // debug('hover = true');
 }
 
-function removeHover() {
+function removeHover () {
   setTimeout(function () { hover = false; }, '100');
 }
 
-function closePopout() {
-  // debug('closePopout: hover = ' + hover);
+function closePopout () {
   if (!hover) {
     hover = true;
     togglePopout('hearEverythingConfig');
   }
 }
 
-function readConfig() {
+function readConfig () {
   config.ap_timeout = 1000; // GM_getValue('he_auto_timeout', 1000);
   config.he_ct_auto = GM_getValue('he_ct_auto', true);
   config.he_cgf_auto = GM_getValue('he_cgf_auto', true);
@@ -284,27 +253,25 @@ function readConfig() {
   config.he_crc_autointro = GM_getValue('he_crc_autointro', false);
   config.he_cl_auto = GM_getValue('he_cl_auto', true);
   setVoice();
-  // console.debug(config);
 }
 
 // builds a configBlock
 // auto = autoplay, click = read options, intro = read intro
-function createConfigOption(challenge, prefix, auto, click, intro) {
+function createConfigOption (challenge, prefix, auto, click, intro) {
   let name = challenge.split('-');
   for (let i = 0; i < name.length; i++) {
     name[i] = name[i][0].toUpperCase() + name[i].substr(1);
   }
   name = name.join(' ');
 
-  let styleCheckbox = 'style="vertical-align: bottom;"';
+  const styleCheckbox = 'style="vertical-align: bottom;"';
   let clickSpan = '';
   let autoSpan = '';
   let introSpan = '';
   if (auto === true) autoSpan = `<input type="checkbox" id="he_${prefix}_auto" value="autoplay" ${styleCheckbox}></input><label for="he_${prefix}_auto"> auto play</label></span>`;
   if (click === true) clickSpan = `<input type="checkbox" id="he_${prefix}_click" value="readoptions" ${styleCheckbox}></input><label for="he_${prefix}_click"> read options</label></span>`;
   if (intro === true) introSpan = `<input type="checkbox" id="he_${prefix}_autointro" value="autointro" ${styleCheckbox}></input><label for="he_${prefix}_autointro"> auto intro</label></span>`;
-  let config = `
-          <div class="QowCP">
+  return `<div class="QowCP">
             <div id="config-${challenge}">${name}:
               <div class="myOptions">
                 <span>${autoSpan}</span>
@@ -314,19 +281,18 @@ function createConfigOption(challenge, prefix, auto, click, intro) {
             </div>
           </div>
         `;
-  return config;
 }
 
 // adds config to the page
-function addConfig() {
+function addConfig () {
   if (!document.querySelector('#hearEverythingGear') && document.querySelector('[role="progressbar"]')) {
-    let configButton = document.createElement('button');
+    const configButton = document.createElement('button');
     configButton.setAttribute('id', 'hearEverythingGear');
     configButton.setAttribute('class', '_2hiHn _2kfEr _1nlVc _2fOC9 UCrz7 t5wFJ _1DC8p _2jNpf');
     configButton.setAttribute('style', `grid-column: 3/3; background-image:url(//d35aaqx5ub95lt.cloudfront.net/images/gear.svg);
         background-position: 0px 0px; background-repeat: no-repeat; background-size: contain;`);
 
-    let configDiv = document.createElement('div');
+    const configDiv = document.createElement('div');
     configDiv.setAttribute('class', '_3yqw1 np6Tv _1Xlh1');
     configDiv.setAttribute('style', 'display: none; position: fixed; margin-top: 1rem;');
     configDiv.setAttribute('id', 'hearEverythingConfig');
@@ -334,8 +300,8 @@ function addConfig() {
     for (let i = 0; i < voices.length; i++) {
       options += `<option value="${i}">${voices[i].name}</option>`;
     }
-    let styleCheckbox = 'style="vertical-align: bottom;"';
-    let configMute = `
+    const styleCheckbox = 'style="vertical-align: bottom;"';
+    const configMute = `
           <div class="QowCP">
             <div id="config-voice">Duo Voice:
               <div class="myOptions">
@@ -347,17 +313,17 @@ function addConfig() {
           </div>
         `;
     // autoplay, play options, read intro
-    let configListenComprehension = createConfigOption(LISTEN_COMPREHENSION, 'lc', false, true, false);
-    let configTranslate = createConfigOption(TRANSLATE, 'ct', true, false, false);
-    let configGapFill = createConfigOption(GAP_FILL, 'cgf', true, true, true);
-    let configTapComplete = createConfigOption(TAP_COMPLETE, 'ctc', true, true, true);
-    let configForm = createConfigOption(FORM, 'cf', true, true, true);
-    let configDialogue = createConfigOption(DIALOGUE, 'cd', true, true, true);
-    let configName = createConfigOption(NAME, 'cn', true, false, false);
-    let configSpeak = createConfigOption(SPEAK, 'cs', true, false, false);
-    let configListenTap = createConfigOption(LISTEN_TAP, 'clt', true, false, false);
-    let configReadComprehension = createConfigOption(READ_COMPREHENSION, 'crc', true, true, true);
-    let configListen = createConfigOption(LISTEN, 'cl', true, false, false);
+    const configListenComprehension = createConfigOption(LISTEN_COMPREHENSION, 'lc', false, true, false);
+    const configTranslate = createConfigOption(TRANSLATE, 'ct', true, false, false);
+    const configGapFill = createConfigOption(GAP_FILL, 'cgf', true, true, true);
+    const configTapComplete = createConfigOption(TAP_COMPLETE, 'ctc', true, true, true);
+    const configForm = createConfigOption(FORM, 'cf', true, true, true);
+    const configDialogue = createConfigOption(DIALOGUE, 'cd', true, true, true);
+    const configName = createConfigOption(NAME, 'cn', true, false, false);
+    const configSpeak = createConfigOption(SPEAK, 'cs', true, false, false);
+    const configListenTap = createConfigOption(LISTEN_TAP, 'clt', true, false, false);
+    const configReadComprehension = createConfigOption(READ_COMPREHENSION, 'crc', true, true, true);
+    const configListen = createConfigOption(LISTEN, 'cl', true, false, false);
     configDiv.innerHTML = `
     <div class="_3uS_y eIZ_c" data-test="config-popout" style="--margin:20px;">
       <div class="_2O14B _2XlFZ _1v2Gj WCcVn" style="z-index: 1;">
@@ -398,16 +364,18 @@ function addConfig() {
     document.querySelector('[role="progressbar"]').insertAdjacentElement('afterend', configButton);
     configButton.insertAdjacentElement('afterend', configDiv);
     configButton.addEventListener('click', function () { togglePopout('hearEverythingConfig'); });
-    let configLanguage = document.getElementById('configLanguage')
+    const configLanguage = document.getElementById('configLanguage');
     configLanguage.querySelector('[value="' + voiceSelect + '"]').setAttribute('selected', true);
     configLanguage.addEventListener('change', function () {
       voiceSelect = configLanguage.options[configLanguage.selectedIndex].value;
+      // eslint-disable-next-line no-undef
       GM_setValue('voiceSelect', voiceSelect);
       setVoice();
     });
 
     setVisibleConfig();
     document.getElementById('hearEverythingConfig').addEventListener('change', function (e) {
+      // eslint-disable-next-line no-undef
       GM_setValue(e.target.id, e.target.checked);
       config[e.target.id] = e.target.checked;
     });
@@ -418,34 +386,28 @@ function addConfig() {
 }
 
 // sets all checkboxes to the current config
-function setVisibleConfig() {
-  (Object.keys(config)).map((key) => {
+function setVisibleConfig () {
+  (Object.keys(config)).forEach((key) => {
     if (document.getElementById(key)) document.getElementById(key).checked = config[key];
   });
 }
 
 // highlights the current challenge config
 // list = array
-function highlightConfig(list) {
-  list.map((entry) => {
+function highlightConfig (list) {
+  list.forEach((entry) => {
     document.querySelector('#config-' + entry).style = 'border: none; padding: 3px;';
   });
-  // document.querySelector('#config-voice').style = 'border: none; padding: 3px;';
-  let challenge = getChallengeType()[0];
-  let element = document.querySelector('#config-' + challenge);
+  const challenge = getChallengeType()[0];
+  const element = document.querySelector('#config-' + challenge);
   if (element !== null) element.style = 'border: 1px solid gray; border-radius: 2px; padding: 3px;';
 }
 
-// returns false or the spoken sentence
-function isDuoSpeaking() {
-
-}
-
-function start() {
+function start () {
   if (document.querySelector('[data-test="challenge-header"]')) {
     addConfig();
     checkNewPage();
-    let challenge = getChallengeType()[0];
+    const challenge = getChallengeType()[0];
     if (challenge) {
       buildDebug();
       if (newPage === true) {
@@ -457,7 +419,7 @@ function start() {
           if (challenge === LISTEN_COMPREHENSION) {
             if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
               if (config.he_lc_click === true) {
-                let hint = document.querySelector(HINT_TOKEN_QS).parentNode.innerText.replace('…', '').replace('...', '');
+                const hint = document.querySelector(HINT_TOKEN_QS).parentNode.innerText.replace('…', '').replace('...', '');
                 addSpeech(CHALLENGE_JUDGE_QS, hint);
                 addedSpeech = true;
               }
@@ -498,14 +460,13 @@ function start() {
           if (challenge === READ_COMPREHENSION) {
             if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0) {
               if (config.he_crc_click === true) {
-                let hint = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('…', '').replace('...', '');
+                const hint = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('…', '').replace('...', '');
                 addSpeech(CHALLENGE_JUDGE_QS, hint);
                 addedSpeech = true;
               }
             }
           }
         }
-
       }
     } else {
       // we detected no content to use, so we are not interested in this page
@@ -514,13 +475,13 @@ function start() {
   }
 }
 
-function prepareChallengeGapFill() {
+function prepareChallengeGapFill () {
   let answer;
   if (document.querySelector(RIGHT_ANSWER_QS)) {
     answer = document.querySelector(RIGHT_OPTION_QS).innerText;
   }
   if (document.querySelector(WRONG_ANSWER_QS)) {
-    let answerElement = document.querySelector(ANSWER_CLASS);
+    const answerElement = document.querySelector(ANSWER_CLASS);
     if (answerElement.lastElementChild) {
       answer = answerElement.lastElementChild.innerText;
     } else {
@@ -531,10 +492,10 @@ function prepareChallengeGapFill() {
   let read = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerText;
   // new type, which has two blanc places
   if (answer.includes('...')) {
-    let answers = answer.split(' ... ');
+    const answers = answer.split(' ... ');
     debug('answer 1 = ' + answers[0]);
     debug('answer 2 = ' + answers[1]);
-    let reads = read.split('\n');
+    const reads = read.split('\n');
     debug('reads = ' + reads);
     if (reads.length === 2) {
       read = answers[0] + reads[0] + answers[1] + reads[1];
@@ -553,10 +514,10 @@ function prepareChallengeGapFill() {
   return read;
 }
 
-function introChallengeGapFill() {
+function introChallengeGapFill () {
   if (document.querySelector(HINT_TOKEN_QS)) {
-    let read = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerText;
-    let speaker = document.createElement('div');
+    const read = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerText;
+    const speaker = document.createElement('div');
     speaker.innerHTML = speakerButton;
     speaker.children[0].id = SPEAK_INTRO;
     speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-16px; margin-right:0px; padding-bottom:5px';
@@ -565,28 +526,28 @@ function introChallengeGapFill() {
   }
 }
 
-function prepareChallengeForm() {
+function prepareChallengeForm () {
   let answer;
   if (document.querySelector(RIGHT_ANSWER_QS)) {
     answer = document.querySelector(RIGHT_OPTION_QS).innerText;
   }
   if (document.querySelector(WRONG_ANSWER_QS)) {
-    let answerElement = document.querySelector(ANSWER_CLASS);
+    const answerElement = document.querySelector(ANSWER_CLASS);
     if (answerElement.lastElementChild) {
       answer = answerElement.lastElementChild.innerText;
     } else {
       answer = answerElement.innerText;
     }
   }
-  let read = document.querySelector(FORM_PROMPT_QS).getAttribute('data-prompt').replace(/_+/, answer);
+  const read = document.querySelector(FORM_PROMPT_QS).getAttribute('data-prompt').replace(/_+/, answer);
   document.querySelector(FORM_PROMPT_QS).innerHTML = `<span>${read}</span>`;
   return read;
 }
 
-function introChallengeForm() {
+function introChallengeForm () {
   if (document.querySelector(FORM_PROMPT_QS)) {
-    let read = document.querySelector(FORM_PROMPT_QS).getAttribute('data-prompt').replace(/_+/, '\n');
-    let speaker = document.createElement('div');
+    const read = document.querySelector(FORM_PROMPT_QS).getAttribute('data-prompt').replace(/_+/, '\n');
+    const speaker = document.createElement('div');
     speaker.innerHTML = speakerButton;
     speaker.children[0].id = SPEAK_INTRO;
     speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-16px; margin-right:0px; padding-bottom:5px';
@@ -595,7 +556,7 @@ function introChallengeForm() {
   }
 }
 
-function prepareChallengeName() {
+function prepareChallengeName () {
   let read;
   if (document.querySelector(RIGHT_ANSWER_QS)) {
     read = document.querySelector(TEXT_INPUT_QS).value;
@@ -606,20 +567,19 @@ function prepareChallengeName() {
   return read;
 }
 
-function prepareChallengeTranslate() {
+function prepareChallengeTranslate () {
   let read;
   if (document.querySelector(RIGHT_ANSWER_QS)) {
     if (document.querySelector(WORD_BANK_QS)) {
-      // debug('innerText = ' + document.querySelector(CHALLENGE_TAP_TOKEN_QS).parentNode.parentNode.innerText);
       read = document.querySelector(CHALLENGE_TAP_TOKEN_QS).parentNode.parentNode.innerText.replace(/\n/g, ' ');
       read = read.replace(/' /g, "'");
     } else {
-      let tI = document.querySelector(TRANSLATE_INPUT_QS);
+      const tI = document.querySelector(TRANSLATE_INPUT_QS);
       if (tI.lang === config.lang) read = tI.innerHTML;
     }
   }
   if (document.querySelector(WRONG_ANSWER_QS) || document.querySelector(RIGHT_ANSWER_TYPO_QS)) {
-    let answer = document.querySelector(ANSWER_CLASS);
+    const answer = document.querySelector(ANSWER_CLASS);
     if (answer.lastElementChild) {
       read = answer.lastElementChild.innerText;
     } else {
@@ -629,11 +589,10 @@ function prepareChallengeTranslate() {
   if (document.querySelector(SPEAKER_BUTTON_QS)) {
     read = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
   }
-  // console.debug('HearEverything: read = ' + read);
   return read;
 }
 
-function prepareChallengeTapComplete() {
+function prepareChallengeTapComplete () {
   let read;
   if (document.querySelector(RIGHT_ANSWER_QS)) {
     read = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerText.replace(/\n/g, '');
@@ -641,27 +600,24 @@ function prepareChallengeTapComplete() {
   if (document.querySelector(WRONG_ANSWER_QS)) {
     read = document.querySelector(ANSWER_CLASS).innerText;
   }
-  // console.debug('HearEverything: read = ' + read);
   return read;
 }
 
-function prepareChallengeDialogue() {
-  let read;
-  let speaker1 = document.querySelector('[class="' + DIALOGUE_SPEAKER_CLASS + '"]').innerText;
+function prepareChallengeDialogue () {
+  const speaker1 = document.querySelector('[class="' + DIALOGUE_SPEAKER_CLASS + '"]').innerText;
   let speaker2;
   if (document.querySelector(WRONG_ANSWER_QS)) {
     speaker2 = document.querySelector('._1UqAr._1sqiF').innerText;
   } else {
     speaker2 = document.querySelector('[aria-checked="true"]').querySelector('[data-test="challenge-judge-text"]').innerText;
   }
-  read = speaker1 + '\n' + speaker2;
-  return read
+  return speaker1 + '\n' + speaker2;
 }
 
-function introChallengeDialogue() {
+function introChallengeDialogue () {
   if (document.querySelector(HINT_SENTENCE_QS)) {
-    let read = document.querySelector(HINT_SENTENCE_QS).innerText;
-    let speaker = document.createElement('div');
+    const read = document.querySelector(HINT_SENTENCE_QS).innerText;
+    const speaker = document.createElement('div');
     speaker.innerHTML = speakerButton;
     speaker.children[0].id = SPEAK_INTRO;
     speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-16px; margin-right:0px; padding-bottom:5px';
@@ -670,23 +626,21 @@ function introChallengeDialogue() {
   }
 }
 
-function prepareChallengeReadComprehension() {
-  let read;
-  let speaker1 = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
+function prepareChallengeReadComprehension () {
+  const speaker1 = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
   let speaker2;
   if (document.querySelector(WRONG_ANSWER_QS)) {
     speaker2 = document.querySelector(ANSWER_CLASS).innerText;
   } else {
     speaker2 = document.querySelector(RIGHT_OPTION_QS).innerText;
   }
-  read = speaker1 + '\n' + document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('...', ' ' + speaker2);
-  return read
+  return speaker1 + '\n' + document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('...', ' ' + speaker2);
 }
 
-function introChallengeReadComprehension() {
+function introChallengeReadComprehension () {
   if (document.querySelector(HINT_TOKEN_QS)) {
-    let read = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
-    let speaker = document.createElement('div');
+    const read = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
+    const speaker = document.createElement('div');
     speaker.innerHTML = speakerButton;
     speaker.children[0].id = SPEAK_INTRO;
     speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-7px; margin-bottom:-10px; margin-right:0px;';
@@ -695,24 +649,24 @@ function introChallengeReadComprehension() {
   }
 }
 
-function prepareChallengeSpeak() {
+function prepareChallengeSpeak () {
   if (document.querySelector(HINT_TOKEN_QS)) {
-    let read = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
-    return read;
+    return document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
   }
 }
 
-function prepareChallengeListenTap() {
+function prepareChallengeListenTap () {
   if (document.querySelector(CHALLENGE_TAP_TOKEN_QS)) {
-    let read = document.querySelector(CHALLENGE_TAP_TOKEN_QS).parentNode.parentNode.innerText;
+    const read = document.querySelector(CHALLENGE_TAP_TOKEN_QS).parentNode.parentNode.innerText;
     return read.replace(/\n/g, ' ').replace(/' /g, "'");
   }
 }
 
-function renderIntroSpeakButton() {
+function renderIntroSpeakButton () {
   if (document.querySelector(SPEAK_INTRO_QS) === null) {
     let read = '';
-    let challenge = getChallengeType()[0];
+    const challenge = getChallengeType()[0];
+
     if (challenge === DIALOGUE) read = introChallengeDialogue();
     if (challenge === READ_COMPREHENSION) read = introChallengeReadComprehension();
     if (challenge === FORM) read = introChallengeForm();
@@ -721,7 +675,7 @@ function renderIntroSpeakButton() {
     if (read !== '') {
       if (DEBUG) document.querySelector('#mySentence').innerText = read;
       debug('intro = ' + read);
-      let utter = generateUtter(read);
+      const utter = generateUtter(read);
       addSpeakListener(SPEAK_INTRO, utter, read);
       if (challenge === DIALOGUE && config.he_cd_autointro) {
         document.querySelector(SPEAK_INTRO_QS).click();
@@ -742,9 +696,9 @@ function renderIntroSpeakButton() {
   }
 }
 
-function renderAnswerSpeakButton() {
+function renderAnswerSpeakButton () {
   let read = '';
-  let challenge = getChallengeType()[0];
+  const challenge = getChallengeType()[0];
   if (challenge === FORM) {
     read = prepareChallengeForm();
   }
@@ -763,10 +717,6 @@ function renderAnswerSpeakButton() {
   if (challenge === GAP_FILL) {
     read = prepareChallengeGapFill();
   }
-  /*
-  if (challenge === COMPLETE_REVERSE_TRANSLATION) {
-      read = prepareChallengeTranslate();
-  } */
   if (challenge === TAP_COMPLETE) {
     read = prepareChallengeTapComplete();
   }
@@ -777,7 +727,7 @@ function renderAnswerSpeakButton() {
     read = prepareChallengeListenTap();
   }
   debug('read = ' + read);
-  let utter = generateUtter(read);
+  const utter = generateUtter(read);
   // add speaker button to answer and fill in the correct answer in the headline
   updateText(read);
   // if we have added the speaker button, we find it in the document
@@ -787,9 +737,7 @@ function renderAnswerSpeakButton() {
   document.addEventListener('keydown', myShortcutListener);
 
   newPage = false;
-  // console.debug('Now it\'s an old page');
   addedSpeech = false;
-  // console.debug('Reset: speech isn\'t attached to options any more');
   // if you like autoplay, it waits 1 second an plays it
   if (((challenge === TRANSLATE) || (challenge === COMPLETE_REVERSE_TRANSLATION)) && config.he_ct_auto === true) {
     timeoutAutoplay(challenge, utter);
@@ -823,7 +771,7 @@ function renderAnswerSpeakButton() {
   }
 }
 
-function timeoutAutoplay(challenge, utter) {
+function timeoutAutoplay (challenge, utter) {
   timeout = setTimeout(function () {
     debug('auto play ' + challenge);
     synth.cancel();
@@ -831,11 +779,10 @@ function timeoutAutoplay(challenge, utter) {
   }, config.ap_timeout);
 }
 
-function addSpeakListener(id, utter, read) {
-  let speak = document.querySelector('#' + id);
+function addSpeakListener (id, utter, read) {
+  const speak = document.querySelector('#' + id);
   if (speak) {
     speak.addEventListener('click', function () { synth.cancel(); synth.speak(utter); });
-    // console.debug('EventListener bound to speak button');
     if (DEBUG) document.querySelector('#mySentence').innerText = read;
     document.getElementById(id).title = read;
   } else {
@@ -843,8 +790,8 @@ function addSpeakListener(id, utter, read) {
   }
 }
 
-function generateUtter(read) {
-  let utter = new SpeechSynthesisUtterance(read);
+function generateUtter (read) {
+  const utter = new SpeechSynthesisUtterance(read);
   utter.voice = voices[voiceSelect];
   utter.volume = 1;
   utter.pitch = 1;
@@ -853,94 +800,64 @@ function generateUtter(read) {
   return utter;
 }
 
-function myShortcutListener(event) {
-  let speak = document.querySelector('#speak');
-  let duoSpeak = document.querySelector(SPEAKER_BUTTON_QS);
+function myShortcutListener (event) {
+  const speak = document.querySelector('#speak');
+  const duoSpeak = document.querySelector(SPEAKER_BUTTON_QS);
   // ALT + l combo
   if (event.altKey && event.key === 'l') {
-    if (speak) { speak.click(); }
+    if (speak) speak.click();
     else if (duoSpeak) duoSpeak.click();
     debug('alt = ' + event.altKey + ' + ' + event.key);
   }
 }
 
-function readTapComplete(tap) {
-  let read = '';
-  let words = tap.childNodes;
-  words.forEach(function (word) {
-    if (word.nodeName === 'SPAN') read += word.children[0].innerText;
-    if (word.nodeName === 'DIV') {
-      read += word.querySelector('[class="_2Z2xv"]').children[0].innerText;
-    }
-  });
-  return read;
+// gives some debug information directly in the Duo-GUI
+function buildDebug () {
+  if (DEBUG && !document.querySelector('#myChallenge')) {
+    const challenge = getChallengeType()[0];
+    let autoPlay = 'disabled';
+    let speakOption = 'disabled';
+    let autoIntro = 'disabled';
+    if (challenge === TRANSLATE && config.he_ct_auto) autoPlay = 'enabled';
+    if (challenge === GAP_FILL && config.he_cgf_auto) autoPlay = 'enabled';
+    if (challenge === GAP_FILL && config.he_cgf_click) speakOption = 'enabled';
+    if (challenge === TAP_COMPLETE && config.he_ctc_auto) autoPlay = 'enabled';
+    if (challenge === TAP_COMPLETE && config.he_ctc_click) speakOption = 'enabled';
+    if (challenge === FORM && config.he_cf_auto) autoPlay = 'enabled';
+    if (challenge === FORM && config.he_cf_click) speakOption = 'enabled';
+    if (challenge === DIALOGUE && config.he_cd_auto) autoPlay = 'enabled';
+    if (challenge === DIALOGUE && config.he_cd_click) speakOption = 'enabled';
+    if (challenge === DIALOGUE && config.he_cd_autointro) autoIntro = 'enabled';
+    if (challenge === NAME && config.he_cn_auto) autoPlay = 'enabled';
+    if (challenge === LISTEN_COMPREHENSION && config.he_lc_click) speakOption = 'enabled';
+    if (challenge === SPEAK && config.he_cs_auto) autoPlay = 'enabled';
+    buildDebugDiv(speakOption, autoPlay, autoIntro);
+  }
 }
 
-// gives some debug information directly in the Duo-GUI
-function buildDebug() {
-  /*
-  const FORM = 'challenge-form';
-const TRANSLATE = 'challenge-translate';
-const DIALOGUE = 'challenge-dialogue';
-const GAP_FILL = 'challenge-gapFill';
-const COMPLETE_REVERSE_TRANSLATION = 'challenge-completeReverseTranslation';
-const TAP_COMPLETE = 'challenge-tapComplete';
-const LISTEN_COMPREHENSION = 'challenge-listenComprehension';
-const READ_COMPREHENSION = 'challenge-readComprehension';
-const NAME = 'challenge-name';
-*/
-  if (DEBUG) {
-    if (!document.querySelector('#myChallenge')) {
-      let challenge = getChallengeType()[0];
-      let autoPlay = 'disabled';
-      let speakOption = 'disabled';
-      let autoIntro = 'disabled';
-      if (challenge === TRANSLATE && config.he_ct_auto) autoPlay = 'enabled';
-      // document.getElementById('he_cgf_auto').checked = config.he_cgf_auto;
-      if (challenge === GAP_FILL && config.he_cgf_auto) autoPlay = 'enabled';
-      // document.getElementById('he_cgf_click').checked = config.he_cgf_click;
-      if (challenge === GAP_FILL && config.he_cgf_click) speakOption = 'enabled';
-      // document.getElementById('he_ctc_auto').checked = config.he_ctc_auto;
-      if (challenge === TAP_COMPLETE && config.he_ctc_auto) autoPlay = 'enabled';
-      // document.getElementById('he_ctc_click').checked = config.he_ctc_click;
-      if (challenge === TAP_COMPLETE && config.he_ctc_click) speakOption = 'enabled';
-      // document.getElementById('he_cf_auto').checked = config.he_cf_auto;
-      if (challenge === FORM && config.he_cf_auto) autoPlay = 'enabled';
-      // document.getElementById('he_cf_click').checked = config.he_cf_click;
-      if (challenge === FORM && config.he_cf_click) speakOption = 'enabled';
-      // document.getElementById('he_cd_auto').checked = config.he_cd_auto;
-      if (challenge === DIALOGUE && config.he_cd_auto) autoPlay = 'enabled';
-      // document.getElementById('he_cd_click').checked = config.he_cd_click;
-      if (challenge === DIALOGUE && config.he_cd_click) speakOption = 'enabled';
-      // document.getElementById('he_cd_autointro').checked = config.he_cd_autointro;
-      if (challenge === DIALOGUE && config.he_cd_autointro) autoIntro = 'enabled';
-      // document.getElementById('he_cn_auto').checked = config.he_cn_auto;
-      if (challenge === NAME && config.he_cn_auto) autoPlay = 'enabled';
-      // document.getElementById('he_muteduo').checked = config.he_muteduo;
-      if (challenge === LISTEN_COMPREHENSION && config.he_lc_click) speakOption = 'enabled';
-      // if (challenge === DIALOGUE && config.he_cd_autointro) autoIntro = 'enabled';
-      if (challenge === SPEAK && config.he_cs_auto) autoPlay = 'enabled';
-      let debug = document.createElement('div');
-      debug.innerHTML = `<span>Challenge-Name: <span id="myChallenge">${getChallengeType()[0]}</span></span>
+function buildDebugDiv (speakOption, autoPlay, autoIntro) {
+  const debugDiv = document.createElement('div');
+  debugDiv.innerHTML = `<span>Challenge-Name: <span id="myChallenge">${getChallengeType()[0]}</span></span>
     <span>Sentence to speak: <span id="mySentence"></span></span>
     <span>Speak options: <span id="myOptions">${speakOption}</span></span>
     <span>Auto play: <span id="myAutoPlay">${autoPlay}</span></span>
     <span>Auto intro: <span id="myAutoIntro">${autoIntro}</span></span>
     <span>Not found: <span id="myNotFound"></span></span>`;
-      debug.style = "font-size: small; text-align:left; display:grid;";
-      document.querySelector('[data-test="challenge-header"]').insertAdjacentElement('afterend', debug);
-      if (!document.querySelector(HINT_SENTENCE_QS)) document.querySelector('#myNotFound').innerText += ' HINT_SENTENCE: ' + HINT_SENTENCE;
-      if (!document.querySelector(SPEAKER_BUTTON_QS)) document.querySelector('#myNotFound').innerText += ' SPEAKER_BUTTON: ' + SPEAKER_BUTTON;
-    }
+  debugDiv.style = 'font-size: small; text-align:left; display:grid;';
+  document.querySelector('[data-test="challenge-header"]').insertAdjacentElement('afterend', debug);
+  if (!document.querySelector(HINT_SENTENCE_QS)) {
+    document.querySelector('#myNotFound').innerText += ' HINT_SENTENCE: ' + HINT_SENTENCE;
+  }
+  if (!document.querySelector(SPEAKER_BUTTON_QS)) {
+    document.querySelector('#myNotFound').innerText += ' SPEAKER_BUTTON: ' + SPEAKER_BUTTON;
   }
 }
 
-function checkNewPage() {
+function checkNewPage () {
   if (!document.querySelector('#myNewPage')) {
-    let nP = document.createElement('div');
+    const nP = document.createElement('div');
     nP.id = 'myNewPage';
     document.querySelector('[data-test="challenge-header"]').insertAdjacentElement('afterend', nP);
-    //console.debug('---- div - newPage ----');
     debug('Challenge Type = ' + getChallengeType()[0]);
     newPage = true;
     if (howlPlay === false) {
@@ -948,14 +865,12 @@ function checkNewPage() {
     } else {
       howlPlay = false;
     }
-  } else {
-    //console.debug('---- div - oldPage ----');
   }
 }
 
 // returns challenge type or false
-function getChallengeType() {
-  let element = document.querySelector('[data-test~="challenge"]');
+function getChallengeType () {
+  const element = document.querySelector('[data-test~="challenge"]');
   if (element !== null) {
     return [element.getAttribute('data-test').split(' ')[1], element];
   } else {
@@ -963,69 +878,32 @@ function getChallengeType() {
   }
 }
 
-// gets the type of the current challenge
-// returns array [type, HTMLElement]
-// returns null if no usable type is found
-// if returnEverything = true, it returns also noType
-function parsedChallengeType(returnEverything = false) {
-
-  let type = null;
-  let noType = ['Unidentified Page Type'];
-  for (let i = 0; i < TEST.length; i++) {
-    if (document.querySelector(`[data-test="${TEST[i]}"]`)) {
-      type = [TEST[i], document.querySelector(`[data-test="${TEST[i]}"]`)];
-    }
-  }
-  if (document.querySelector(`[data-test="${SELECT_TRANSCRIPTION}"]`)) { noType = ['No usable page type (' + SELECT_TRANSCRIPTION + ')', '']; }
-  if (document.querySelector(`[data-test="${READ_COMPREHENSION}"]`)) { noType = ['No usable page type (' + READ_COMPREHENSION + ')', '']; }
-  if (document.querySelector(`[data-test="${LISTEN}"]`)) { noType = ['No usable page type (' + LISTEN + ')', '']; }
-  if (document.querySelector(`[data-test="${LISTEN_TAP}"]`)) { noType = ['No usable page type (' + LISTEN_TAP + ')', '']; }
-  if (document.querySelector(`[data-test="${LISTEN_COMPREHENSION}"]`)) { noType = ['No usable page type (' + LISTEN_COMPREHENSION + ')', '']; }
-
-  // type ? console.info('HearEverything: Page Type = ' + type[0]) : console.info('HearEverything: ' + noType[0]);
-  if (returnEverything) {
-    return type ? type : noType;
-  } else {
-    return type;
-  }
-}
-
-function addSpeech(qs, t = '') {
-  //console.debug('Add speech to the option buttons:');
+function addSpeech (qs, t = '') {
   if (t !== '') t += ' ';
-  let options = document.querySelectorAll(qs);
-  for (let i = 0; i < options.length; i++) {
-    let utter = generateUtter(t + options[i].innerText);
-    options[i].parentNode.addEventListener('click', function () { synth.cancel(); synth.speak(utter); });
-    // console.debug('EventListener bound: ' + options[i].innerHTML);
-    debug('Option = ' + t + options[i].innerText);
-    // options[i].id = 'eventListener' + i;
+  const options = document.querySelectorAll(qs);
+  for (const option of options) {
+    const utter = generateUtter(t + option.innerText);
+    option.parentNode.addEventListener('click', function () { synth.cancel(); synth.speak(utter); });
+    debug('Option = ' + t + option.innerText);
   }
 }
 
-function updateText(t) {
+function updateText (t) {
   // don't add a listen button if there is no text t
-  if (t !== '') {
-    // console.debug('We should now add a speak button');
-    let formPrompt = document.querySelector('[data-test="challenge-form-prompt"]');
-    let translateInput = document.querySelector('[data-test="challenge-translate-input"]');
-
-    if (TEST.includes(getChallengeType()[0])) {
-      let div = document.createElement('div');
-      div.class = 'np6Tv';
-      div.style = 'position: absolute; align-self: flex-end; top: 1.8rem;';
-      div.innerHTML = speakerButton;
-      // if the answer is displayed
-      if (document.querySelector('._3dRS9._3DKa-._1tuLI')) {
-        if (translateInput !== null) {
-          if (translateInput.lang === config.lang) {
-            document.querySelector('._3dRS9._3DKa-._1tuLI').insertAdjacentElement('afterBegin', div);
-            // console.debug('Speaker Button Bottom added');
-          }
-        } else {
+  if (t !== '' && ALLOW_LISTEN_BUTTON.includes(getChallengeType()[0])) {
+    const translateInput = document.querySelector(TRANSLATE_INPUT_QS);
+    const div = document.createElement('div');
+    div.class = 'np6Tv';
+    div.style = 'position: absolute; align-self: flex-end; top: 1.8rem;';
+    div.innerHTML = speakerButton;
+    // if the answer is displayed
+    if (document.querySelector('._3dRS9._3DKa-._1tuLI')) {
+      if (translateInput !== null) {
+        if (translateInput.lang === config.lang) {
           document.querySelector('._3dRS9._3DKa-._1tuLI').insertAdjacentElement('afterBegin', div);
-          // console.debug('Speaker Button Bottom added');
         }
+      } else {
+        document.querySelector('._3dRS9._3DKa-._1tuLI').insertAdjacentElement('afterBegin', div);
       }
     }
   }
