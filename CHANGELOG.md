@@ -1,8 +1,24 @@
 # Changelog
 
+## 0.63
+
+### changed
+
+- fixed challenge read comprehension bug, that no answer has been read
+
+## 0.63
+
+### added
+
+- challenge tapClozeTable autoplay and autointro
+
+### changed
+
+- code refactored
+
 ## 0.62.1
 
-## changed
+### changed
 
 - code refactoring
 

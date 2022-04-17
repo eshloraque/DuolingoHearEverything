@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Duolingo HearEverything
 // @namespace    http://tampermonkey.net/
-// @version      0.63.1
+// @version      0.63.2
 // @description  Reads aloud most sentences in Duo's challenges.
 // @author       Esh
 // @match        https://*.duolingo.com/*
@@ -10,7 +10,7 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-const VERSION = '0.63.1 --- 1 ---';
+const VERSION = '0.63.2 --- 1 ---';
 
 const LOG_STRING = 'Duolingo HearEverything: ';
 let voiceSelect;
@@ -432,9 +432,11 @@ function start () {
   function setupNewPage () {
     if (newPage === true) {
       page.isAnswerVisible = (document.querySelector(ANSWER_QS) !== null);
-      page.hasSpeakerButton = (document.querySelector(SPEAK_INTRO_QS) !== null);
-      page.isWrongAnswer = (document.querySelector(WRONG_ANSWER_QS));
-      page.isRightAnswer = (document.querySelector(RIGHT_ANSWER_QS));
+      page.hasIntroSpeakerButton = (document.querySelector(SPEAK_INTRO_QS) !== null);
+      page.hasSpeakerButton = (document.querySelector(SPEAKER_BUTTON_QS) !== null);
+      page.isWrongAnswer = (document.querySelector(WRONG_ANSWER_QS) !== null);
+      page.isRightAnswer = (document.querySelector(RIGHT_ANSWER_QS) !== null);
+      page.isRightAnswerTypo = (document.querySelector(RIGHT_ANSWER_TYPO_QS) !== null);
       // if (document.querySelector(ANSWER_QS) !== null) {
       if (page.isAnswerVisible) {
         renderAnswerSpeakButton();
@@ -444,20 +446,21 @@ function start () {
         if (page.challenge === GAP_FILL) setupGapFill();
         if (page.challenge === DIALOGUE) setupDialogue();
         if (page.challenge === TAP_COMPLETE) setupTapComplete();
-        if (page.challenge === (TRANSLATE || COMPLETE_REVERSE_TRANSLATION || NAME || SPEAK || LISTEN_TAP || LISTEN)) setupIntroSpeakButton();
+        if (page.challenge === (NAME || SPEAK || LISTEN_TAP)) setupIntroSpeakButton();
       }
       if (page.challenge === TAP_CLOZE_TABLE) setupTapClozeTable();
       if (page.challenge === READ_COMPREHENSION) setupReadComprehension();
+      if (page.challenge === (TRANSLATE || LISTEN || COMPLETE_REVERSE_TRANSLATION)) setupTranslate();
     }
   }
 }
 
 function setupIntroSpeakButton () {
-  renderIntroSpeakButton();
+  if (!page.hasIntroSpeakerButton) renderIntroSpeakButton();
 }
 
 function setupTapClozeTable () {
-  if (!page.hasSpeakerButton) renderIntroSpeakButton(introChallengeTapClozeTable(), config.he_ctct_autointro);
+  if (!page.hasIntroSpeakerButton) renderIntroSpeakButton(introChallengeTapClozeTable(), config.he_ctct_autointro);
   if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTapClozeTable(), config.he_ctct_auto);
 
   function introChallengeTapClozeTable () {
@@ -488,7 +491,7 @@ function setupTapClozeTable () {
 }
 
 function setupReadComprehension () {
-  if (!page.hasSpeakerButton) renderIntroSpeakButton(introChallengeReadComprehension(), config.he_crc_autointro);
+  if (!page.hasIntroSpeakerButton) renderIntroSpeakButton(introChallengeReadComprehension(), config.he_crc_autointro);
   if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeReadComprehension(), config.he_crc_auto);
   if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0) {
     if (config.he_crc_click === true) {
@@ -520,6 +523,39 @@ function setupReadComprehension () {
       document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.insertAdjacentElement('beforeBegin', speaker);
       return read;
     }
+  }
+}
+
+function setupTranslate () {
+  let configValue = config.he_ct_auto;
+  if (page.challenge === LISTEN) configValue = config.he_cl_auto;
+  // complete reverse translation uses the same config as translation, because it looks the same for the user
+  if (page.challenge === COMPLETE_REVERSE_TRANSLATION) configValue = config.he_ct_auto;
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTranslate(), configValue);
+
+  function prepareChallengeTranslate () {
+    let read;
+    if (page.isRightAnswer) {
+      if (document.querySelector(WORD_BANK_QS)) {
+        read = document.querySelector(CHALLENGE_TAP_TOKEN_QS).parentNode.parentNode.innerText.replace(/\n/g, ' ');
+        read = read.replace(/' /g, "'");
+      } else {
+        const tI = document.querySelector(TRANSLATE_INPUT_QS);
+        if (tI.lang === config.lang) read = tI.innerHTML;
+      }
+    }
+    if (page.isWrongAnswer || page.isRightAnswerTypo) {
+      const answer = document.querySelector(ANSWER_CLASS);
+      if (answer.lastElementChild) {
+        read = answer.lastElementChild.innerText;
+      } else {
+        read = answer.innerText;
+      }
+    }
+    if (page.hasSpeakerButton) {
+      read = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
+    }
+    return read;
   }
 }
 
@@ -666,31 +702,6 @@ function prepareChallengeName () {
   return read;
 }
 
-function prepareChallengeTranslate () {
-  let read;
-  if (document.querySelector(RIGHT_ANSWER_QS)) {
-    if (document.querySelector(WORD_BANK_QS)) {
-      read = document.querySelector(CHALLENGE_TAP_TOKEN_QS).parentNode.parentNode.innerText.replace(/\n/g, ' ');
-      read = read.replace(/' /g, "'");
-    } else {
-      const tI = document.querySelector(TRANSLATE_INPUT_QS);
-      if (tI.lang === config.lang) read = tI.innerHTML;
-    }
-  }
-  if (document.querySelector(WRONG_ANSWER_QS) || document.querySelector(RIGHT_ANSWER_TYPO_QS)) {
-    const answer = document.querySelector(ANSWER_CLASS);
-    if (answer.lastElementChild) {
-      read = answer.lastElementChild.innerText;
-    } else {
-      read = answer.innerText;
-    }
-  }
-  if (document.querySelector(SPEAKER_BUTTON_QS)) {
-    read = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
-  }
-  return read;
-}
-
 function prepareChallengeTapComplete () {
   let read;
   if (document.querySelector(RIGHT_ANSWER_QS)) {
@@ -776,13 +787,13 @@ function renderAnswerSpeakButton (read = '', auto = false) {
   if (challenge === FORM) {
     read = prepareChallengeForm();
   }
-  if (challenge === TRANSLATE || challenge === LISTEN || challenge === COMPLETE_REVERSE_TRANSLATION) {
+  /*   if (challenge === TRANSLATE || challenge === LISTEN || challenge === COMPLETE_REVERSE_TRANSLATION) {
     read = prepareChallengeTranslate();
-  }
+  } */
   if (challenge === DIALOGUE) {
     read = prepareChallengeDialogue();
   }
- /*  if (challenge === READ_COMPREHENSION) {
+  /*  if (challenge === READ_COMPREHENSION) {
     read = prepareChallengeReadComprehension();
   } */
   if (challenge === NAME) {
@@ -814,9 +825,9 @@ function renderAnswerSpeakButton (read = '', auto = false) {
   newPage = false;
   addedSpeech = false;
   // if you like autoplay, it waits 1 second an plays it
-  if (((challenge === TRANSLATE) || (challenge === COMPLETE_REVERSE_TRANSLATION)) && config.he_ct_auto === true) {
+  /*   if (((challenge === TRANSLATE) || (challenge === COMPLETE_REVERSE_TRANSLATION)) && config.he_ct_auto === true) {
     timeoutAutoplay(utter);
-  }
+  } */
   if (challenge === GAP_FILL && config.he_cgf_auto === true) {
     timeoutAutoplay(utter);
   }
@@ -838,13 +849,13 @@ function renderAnswerSpeakButton (read = '', auto = false) {
   if (challenge === LISTEN_TAP && config.he_clt_auto === true) {
     timeoutAutoplay(utter);
   }
-/*   if (challenge === READ_COMPREHENSION && config.he_crc_auto === true) {
+  /*   if (challenge === READ_COMPREHENSION && config.he_crc_auto === true) {
     timeoutAutoplay(utter);
   } */
   if (challenge === LISTEN && config.he_cl_auto === true) {
     timeoutAutoplay(utter);
   }
-/*   if (challenge === TAP_CLOZE_TABLE && config.he_ctct_auto === true) {
+  /*   if (challenge === TAP_CLOZE_TABLE && config.he_ctct_auto === true) {
     timeoutAutoplay(utter);
   } */
   if (auto) timeoutAutoplay(utter);
@@ -893,42 +904,41 @@ function myShortcutListener (event) {
 // gives some debug information directly in the Duo-GUI
 function buildDebug () {
   if (DEBUG && !document.querySelector('#myChallenge')) {
-    const challenge = getChallengeType()[0];
     let autoPlay = 'disabled';
     let speakOption = 'disabled';
     let autoIntro = 'disabled';
-    if (challenge === TRANSLATE && config.he_ct_auto) autoPlay = 'enabled';
-    if (challenge === GAP_FILL && config.he_cgf_auto) autoPlay = 'enabled';
-    if (challenge === GAP_FILL && config.he_cgf_click) speakOption = 'enabled';
-    if (challenge === TAP_COMPLETE && config.he_ctc_auto) autoPlay = 'enabled';
-    if (challenge === TAP_COMPLETE && config.he_ctc_click) speakOption = 'enabled';
-    if (challenge === FORM && config.he_cf_auto) autoPlay = 'enabled';
-    if (challenge === FORM && config.he_cf_click) speakOption = 'enabled';
-    if (challenge === DIALOGUE && config.he_cd_auto) autoPlay = 'enabled';
-    if (challenge === DIALOGUE && config.he_cd_click) speakOption = 'enabled';
-    if (challenge === DIALOGUE && config.he_cd_autointro) autoIntro = 'enabled';
-    if (challenge === NAME && config.he_cn_auto) autoPlay = 'enabled';
-    if (challenge === LISTEN_COMPREHENSION && config.he_clc_click) speakOption = 'enabled';
-    if (challenge === SPEAK && config.he_cs_auto) autoPlay = 'enabled';
+    if (page.challenge === TRANSLATE && config.he_ct_auto) autoPlay = 'enabled';
+    if (page.challenge === GAP_FILL && config.he_cgf_auto) autoPlay = 'enabled';
+    if (page.challenge === GAP_FILL && config.he_cgf_click) speakOption = 'enabled';
+    if (page.challenge === TAP_COMPLETE && config.he_ctc_auto) autoPlay = 'enabled';
+    if (page.challenge === TAP_COMPLETE && config.he_ctc_click) speakOption = 'enabled';
+    if (page.challenge === FORM && config.he_cf_auto) autoPlay = 'enabled';
+    if (page.challenge === FORM && config.he_cf_click) speakOption = 'enabled';
+    if (page.challenge === DIALOGUE && config.he_cd_auto) autoPlay = 'enabled';
+    if (page.challenge === DIALOGUE && config.he_cd_click) speakOption = 'enabled';
+    if (page.challenge === DIALOGUE && config.he_cd_autointro) autoIntro = 'enabled';
+    if (page.challenge === NAME && config.he_cn_auto) autoPlay = 'enabled';
+    if (page.challenge === LISTEN_COMPREHENSION && config.he_clc_click) speakOption = 'enabled';
+    if (page.challenge === SPEAK && config.he_cs_auto) autoPlay = 'enabled';
     buildDebugDiv(speakOption, autoPlay, autoIntro);
   }
-}
 
-function buildDebugDiv (speakOption, autoPlay, autoIntro) {
-  const debugDiv = document.createElement('div');
-  debugDiv.innerHTML = `<span>Challenge-Name: <span id="myChallenge">${getChallengeType()[0]}</span></span>
-    <span>Sentence to speak: <span id="mySentence"></span></span>
-    <span>Speak options: <span id="myOptions">${speakOption}</span></span>
-    <span>Auto play: <span id="myAutoPlay">${autoPlay}</span></span>
-    <span>Auto intro: <span id="myAutoIntro">${autoIntro}</span></span>
-    <span>Not found: <span id="myNotFound"></span></span>`;
-  debugDiv.style = 'font-size: small; text-align:left; display:grid;';
-  document.querySelector('[data-test="challenge-header"]').insertAdjacentElement('afterend', debug);
-  if (!document.querySelector(HINT_SENTENCE_QS)) {
-    document.querySelector('#myNotFound').innerText += ' HINT_SENTENCE: ' + HINT_SENTENCE;
-  }
-  if (!document.querySelector(SPEAKER_BUTTON_QS)) {
-    document.querySelector('#myNotFound').innerText += ' SPEAKER_BUTTON: ' + SPEAKER_BUTTON;
+  function buildDebugDiv (speakOption, autoPlay, autoIntro) {
+    const debugDiv = document.createElement('div');
+    debugDiv.innerHTML = `<span>Challenge-Name: <span id="myChallenge">${getChallengeType()[0]}</span></span>
+      <span>Sentence to speak: <span id="mySentence"></span></span>
+      <span>Speak options: <span id="myOptions">${speakOption}</span></span>
+      <span>Auto play: <span id="myAutoPlay">${autoPlay}</span></span>
+      <span>Auto intro: <span id="myAutoIntro">${autoIntro}</span></span>
+      <span>Not found: <span id="myNotFound"></span></span>`;
+    debugDiv.style = 'font-size: small; text-align:left; display:grid;';
+    document.querySelector('[data-test="challenge-header"]').insertAdjacentElement('afterend', debug);
+    if (!document.querySelector(HINT_SENTENCE_QS)) {
+      document.querySelector('#myNotFound').innerText += ' HINT_SENTENCE: ' + HINT_SENTENCE;
+    }
+    if (!document.querySelector(SPEAKER_BUTTON_QS)) {
+      document.querySelector('#myNotFound').innerText += ' SPEAKER_BUTTON: ' + SPEAKER_BUTTON;
+    }
   }
 }
 
