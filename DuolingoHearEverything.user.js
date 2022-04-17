@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Duolingo HearEverything
 // @namespace    http://tampermonkey.net/
-// @version      0.62.1
+// @version      0.63
 // @description  Reads aloud most sentences in Duo's challenges.
 // @author       Esh
 // @match        https://*.duolingo.com/*
@@ -10,7 +10,7 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-const VERSION = '0.62.1 --- 1 ---';
+const VERSION = '0.63 --- 4 ---';
 
 const LOG_STRING = 'Duolingo HearEverything: ';
 let voiceSelect;
@@ -27,6 +27,7 @@ const challengesUrls = [];
 const challengesReads = [];
 let timeout;
 let howlPlay = false;
+let challenge = '';
 
 const speakerButton = `
   <a class="_3UpNo _3EXrQ _2VrUB" data-test="speaker-button" title="Listen" id="speak">
@@ -113,9 +114,10 @@ const NAME = 'challenge-name';
 const SPEAK = 'challenge-speak';
 const LISTEN_TAP = 'challenge-listenTap';
 const LISTEN = 'challenge-listen';
+const TAP_CLOZE_TABLE = 'challenge-tapClozeTable';
 
 // allowed challenge types
-const ALLOW_LISTEN_BUTTON = [FORM, TRANSLATE, DIALOGUE, GAP_FILL, COMPLETE_REVERSE_TRANSLATION, TAP_COMPLETE, LISTEN_COMPREHENSION, READ_COMPREHENSION, NAME, SPEAK, LISTEN_TAP, LISTEN];
+const ALLOW_LISTEN_BUTTON = [FORM, TRANSLATE, DIALOGUE, GAP_FILL, COMPLETE_REVERSE_TRANSLATION, TAP_COMPLETE, LISTEN_COMPREHENSION, READ_COMPREHENSION, NAME, SPEAK, LISTEN_TAP, LISTEN, TAP_CLOZE_TABLE];
 // challenges where duo has to read
 // const NO_MUTE = [LISTEN, SELECT_TRANSCRIPTION, GAP_FILL, LISTEN_TAP, LISTEN_COMPREHENSION];
 // let buttonDisabled = true;
@@ -183,20 +185,6 @@ window.onload = function () {
   debug('MutationObserver running');
 };
 
-function setVoice () {
-  voiceSelect = GM_getValue('voiceSelect', 1000);
-  const duoState = JSON.parse(localStorage.getItem('duo.state'));
-  config.lang = duoState.user.learningLanguage;
-
-  if (voiceSelect === 1000) {
-    for (let i = 0; i < voices.length; i++) {
-      if (voices[i].lang.includes(config.lang)) {
-        voiceSelect = i;
-      }
-    }
-  }
-}
-
 // toggles visibility
 function togglePopout (id) {
   const popout = document.getElementById(id);
@@ -211,76 +199,69 @@ function togglePopout (id) {
     popout.removeEventListener('mouseenter', setHover);
     popout.removeEventListener('mouseleave', removeHover);
   }
-}
 
-function setHover () {
-  hover = true;
-}
-
-function removeHover () {
-  setTimeout(function () { hover = false; }, '100');
-}
-
-function closePopout () {
-  if (!hover) {
+  function setHover () {
     hover = true;
-    togglePopout('hearEverythingConfig');
+  }
+
+  function removeHover () {
+    setTimeout(function () { hover = false; }, '100');
+  }
+
+  function closePopout () {
+    if (!hover) {
+      hover = true;
+      togglePopout('hearEverythingConfig');
+    }
   }
 }
 
+// gets the stored config
 function readConfig () {
-  config.ap_timeout = 1000; // GM_getValue('he_auto_timeout', 1000);
-  config.he_ct_auto = GM_getValue('he_ct_auto', true);
-  config.he_cgf_auto = GM_getValue('he_cgf_auto', true);
-  config.he_cgf_click = GM_getValue('he_cgf_click', true);
-  config.he_cgf_autointro = GM_getValue('he_cgf_autointro', true);
-  config.he_cd_auto = GM_getValue('he_cd_auto', false);
-  config.he_cd_click = GM_getValue('he_cd_click', true);
-  config.he_cd_autointro = GM_getValue('he_cd_autointro', true);
-  config.he_cf_auto = GM_getValue('he_cf_auto', true);
-  config.he_cf_click = GM_getValue('he_cf_click', true);
-  config.he_cf_autointro = GM_getValue('he_cf_autointro', false);
-  config.he_ctc_auto = GM_getValue('he_ctc_auto', true);
-  config.he_ctc_click = GM_getValue('he_ctc_click', false);
-  config.he_ctc_autointro = GM_getValue('he_ctc_autointro', true);
-  config.he_cn_auto = GM_getValue('he_cn_auto', true);
-  config.he_muteduo = GM_getValue('he_muteduo', false);
-  config.he_lc_click = GM_getValue('he_lc_click', true);
-  config.he_cs_auto = GM_getValue('he_cs_auto', true);
-  config.he_clt_auto = GM_getValue('he_clt_auto', true);
-  config.he_crc_auto = GM_getValue('he_crc_auto', true);
-  config.he_crc_click = GM_getValue('he_crc_click', false);
-  config.he_crc_autointro = GM_getValue('he_crc_autointro', false);
-  config.he_cl_auto = GM_getValue('he_cl_auto', true);
+  // eslint-disable-next-line no-undef
+  voiceSelect = GM_getValue('voiceSelect', 1000);
   setVoice();
-}
+  config.ap_timeout = 1000;
+  // eslint-disable-next-line no-undef
+  config.he_muteduo = GM_getValue('he_muteduo', false);
+  configChallenge(DIALOGUE, 'cd', false, true, true);
+  configChallenge(FORM, 'cf', true, true, false);
+  configChallenge(GAP_FILL, 'cgf', true, true, true);
+  configChallenge(LISTEN, 'cl', true, null, null);
+  configChallenge(LISTEN_COMPREHENSION, 'clc', null, true, null);
+  configChallenge(LISTEN_TAP, 'clt', true, null, null);
+  configChallenge(NAME, 'cn', true, null, null);
+  configChallenge(READ_COMPREHENSION, 'crc', true, false, false);
+  configChallenge(SPEAK, 'cs', true, null, null);
+  configChallenge(TAP_CLOZE_TABLE, 'ctct', false, null, true);
+  configChallenge(TAP_COMPLETE, 'ctc', true, false, true);
+  configChallenge(TRANSLATE, 'ct', true, null, null);
 
-// builds a configBlock
-// auto = autoplay, click = read options, intro = read intro
-function createConfigOption (challenge, prefix, auto, click, intro) {
-  let name = challenge.split('-');
-  for (let i = 0; i < name.length; i++) {
-    name[i] = name[i][0].toUpperCase() + name[i].substr(1);
+  // auto/click/autointro default: true/false, if not used: null
+  function configChallenge (_challengeName, shortName, auto, click, autointro) {
+    const keyAuto = 'he_' + shortName + '_auto';
+    const keyClick = 'he_' + shortName + '_click';
+    const keyAutointro = 'he_' + shortName + '_autointro';
+    // eslint-disable-next-line no-undef
+    if (auto !== null) config[keyAuto] = GM_getValue(keyAuto, auto);
+    // eslint-disable-next-line no-undef
+    if (click !== null) config[keyClick] = GM_getValue(keyClick, click);
+    // eslint-disable-next-line no-undef
+    if (autointro !== null) config[keyAutointro] = GM_getValue(keyAutointro, autointro);
   }
-  name = name.join(' ');
 
-  const styleCheckbox = 'style="vertical-align: bottom;"';
-  let clickSpan = '';
-  let autoSpan = '';
-  let introSpan = '';
-  if (auto === true) autoSpan = `<input type="checkbox" id="he_${prefix}_auto" value="autoplay" ${styleCheckbox}></input><label for="he_${prefix}_auto"> auto play</label></span>`;
-  if (click === true) clickSpan = `<input type="checkbox" id="he_${prefix}_click" value="readoptions" ${styleCheckbox}></input><label for="he_${prefix}_click"> read options</label></span>`;
-  if (intro === true) introSpan = `<input type="checkbox" id="he_${prefix}_autointro" value="autointro" ${styleCheckbox}></input><label for="he_${prefix}_autointro"> auto intro</label></span>`;
-  return `<div class="QowCP">
-            <div id="config-${challenge}">${name}:
-              <div class="myOptions">
-                <span>${autoSpan}</span>
-                <span>${clickSpan}</span>
-                <span>${introSpan}</span>
-              </div>
-            </div>
-          </div>
-        `;
+  function setVoice () {
+    const duoState = JSON.parse(localStorage.getItem('duo.state'));
+    config.lang = duoState.user.learningLanguage;
+
+    if (voiceSelect === 1000) {
+      for (let i = 0; i < voices.length; i++) {
+        if (voices[i].lang.includes(config.lang)) {
+          voiceSelect = i;
+        }
+      }
+    }
+  }
 }
 
 // adds config to the page
@@ -313,7 +294,7 @@ function addConfig () {
           </div>
         `;
     // autoplay, play options, read intro
-    const configListenComprehension = createConfigOption(LISTEN_COMPREHENSION, 'lc', false, true, false);
+    const configListenComprehension = createConfigOption(LISTEN_COMPREHENSION, 'clc', false, true, false);
     const configTranslate = createConfigOption(TRANSLATE, 'ct', true, false, false);
     const configGapFill = createConfigOption(GAP_FILL, 'cgf', true, true, true);
     const configTapComplete = createConfigOption(TAP_COMPLETE, 'ctc', true, true, true);
@@ -324,6 +305,7 @@ function addConfig () {
     const configListenTap = createConfigOption(LISTEN_TAP, 'clt', true, false, false);
     const configReadComprehension = createConfigOption(READ_COMPREHENSION, 'crc', true, true, true);
     const configListen = createConfigOption(LISTEN, 'cl', true, false, false);
+    const configTapClozeTable = createConfigOption(TAP_CLOZE_TABLE, 'ctct', true, false, true);
     configDiv.innerHTML = `
     <div class="_3uS_y eIZ_c" data-test="config-popout" style="--margin:20px;">
       <div class="_2O14B _2XlFZ _1v2Gj WCcVn" style="z-index: 1;">
@@ -345,17 +327,18 @@ function addConfig () {
   width: 15ch;
 }
 </style>
-          ${configListenComprehension}
-          ${configTranslate}
-          ${configGapFill}
-          ${configTapComplete}
-          ${configForm}
           ${configDialogue}
-          ${configName}
-          ${configSpeak}
-          ${configListenTap}
-          ${configReadComprehension}
+          ${configForm}
+          ${configGapFill}
           ${configListen}
+          ${configListenComprehension}
+          ${configListenTap}
+          ${configName}
+          ${configReadComprehension}
+          ${configSpeak}
+          ${configTapClozeTable}        
+          ${configTapComplete}
+          ${configTranslate}
           ${configMute}
         </div>
       </div>
@@ -370,7 +353,7 @@ function addConfig () {
       voiceSelect = configLanguage.options[configLanguage.selectedIndex].value;
       // eslint-disable-next-line no-undef
       GM_setValue('voiceSelect', voiceSelect);
-      setVoice();
+      // setVoice();
     });
 
     setVisibleConfig();
@@ -381,96 +364,180 @@ function addConfig () {
     });
   }
   if (document.querySelector('#hearEverythingGear') && document.querySelector('[role="progressbar"]')) {
-    highlightConfig([LISTEN_COMPREHENSION, TRANSLATE, GAP_FILL, TAP_COMPLETE, FORM, DIALOGUE, NAME, SPEAK, LISTEN_TAP, READ_COMPREHENSION, LISTEN]);
+    highlightConfig([LISTEN_COMPREHENSION, TRANSLATE, GAP_FILL, TAP_COMPLETE, FORM, DIALOGUE, NAME, SPEAK, LISTEN_TAP, READ_COMPREHENSION, LISTEN, TAP_CLOZE_TABLE]);
+  }
+
+  // builds a configBlock
+  // auto = autoplay, click = read options, intro = read intro
+  function createConfigOption (challengeName, prefix, auto, click, intro) {
+    let name = challengeName.split('-');
+    for (let i = 0; i < name.length; i++) {
+      name[i] = name[i][0].toUpperCase() + name[i].substr(1);
+    }
+    name = name.join(' ');
+
+    const styleCheckbox = 'style="vertical-align: bottom;"';
+    let clickSpan = '';
+    let autoSpan = '';
+    let introSpan = '';
+    if (auto === true) autoSpan = `<input type="checkbox" id="he_${prefix}_auto" value="autoplay" ${styleCheckbox}></input><label for="he_${prefix}_auto"> auto play</label></span>`;
+    if (click === true) clickSpan = `<input type="checkbox" id="he_${prefix}_click" value="readoptions" ${styleCheckbox}></input><label for="he_${prefix}_click"> read options</label></span>`;
+    if (intro === true) introSpan = `<input type="checkbox" id="he_${prefix}_autointro" value="autointro" ${styleCheckbox}></input><label for="he_${prefix}_autointro"> auto intro</label></span>`;
+    return `<div class="QowCP">
+            <div id="config-${challengeName}">${name}:
+              <div class="myOptions">
+                <span>${autoSpan}</span>
+                <span>${clickSpan}</span>
+                <span>${introSpan}</span>
+              </div>
+            </div>
+          </div>
+        `;
+  }
+
+  // sets all checkboxes to the current config
+  function setVisibleConfig () {
+    (Object.keys(config)).forEach((key) => {
+      if (document.getElementById(key)) document.getElementById(key).checked = config[key];
+    });
+  }
+
+  // highlights the current challenge config
+  // list = array
+  function highlightConfig (list) {
+    list.forEach((entry) => {
+      document.querySelector('#config-' + entry).style = 'border: none; padding: 3px;';
+    });
+    const element = document.querySelector('#config-' + challenge);
+    if (element !== null) element.style = 'border: 1px solid gray; border-radius: 2px; padding: 3px;';
   }
 }
 
-// sets all checkboxes to the current config
-function setVisibleConfig () {
-  (Object.keys(config)).forEach((key) => {
-    if (document.getElementById(key)) document.getElementById(key).checked = config[key];
-  });
-}
-
-// highlights the current challenge config
-// list = array
-function highlightConfig (list) {
-  list.forEach((entry) => {
-    document.querySelector('#config-' + entry).style = 'border: none; padding: 3px;';
-  });
-  const challenge = getChallengeType()[0];
-  const element = document.querySelector('#config-' + challenge);
-  if (element !== null) element.style = 'border: 1px solid gray; border-radius: 2px; padding: 3px;';
-}
-
+// start whenever the mutation observer wants you to start
 function start () {
-  if (document.querySelector('[data-test="challenge-header"]')) {
+  if (window.location.pathname.includes('/skill') && document.querySelector('[data-test="challenge-header"]')) {
     addConfig();
     checkNewPage();
-    const challenge = getChallengeType()[0];
+    challenge = getChallengeType()[0];
     if (challenge) {
       buildDebug();
-      if (newPage === true) {
-        if (document.querySelector(ANSWER_QS) !== null) {
-          renderAnswerSpeakButton();
-        } else {
-          renderIntroSpeakButton();
-          // speak optionen
-          if (challenge === LISTEN_COMPREHENSION) {
-            if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
-              if (config.he_lc_click === true) {
-                const hint = document.querySelector(HINT_TOKEN_QS).parentNode.innerText.replace('…', '').replace('...', '');
-                addSpeech(CHALLENGE_JUDGE_QS, hint);
-                addedSpeech = true;
-              }
-            }
-          }
-          if (challenge === FORM) {
-            if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0) {
-              if (config.he_cf_click === true) {
-                addSpeech(CHALLENGE_JUDGE_QS);
-                addedSpeech = true;
-              }
-            }
-          }
-          if (challenge === GAP_FILL) {
-            if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
-              if (config.he_cgf_click === true) {
-                addSpeech(CHALLENGE_JUDGE_QS);
-                addedSpeech = true;
-              }
-            }
-          }
-          if (challenge === DIALOGUE) {
-            if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
-              if (config.he_cd_click === true) {
-                addSpeech(CHALLENGE_JUDGE_QS);
-                addedSpeech = true;
-              }
-            }
-          }
-          if (challenge === TAP_COMPLETE) {
-            if (addedSpeech === false && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
-              if (config.he_ctc_click === true) {
-                addSpeech(CHALLENGE_TAP_TOKEN_QS);
-                addedSpeech = true;
-              }
-            }
-          }
-          if (challenge === READ_COMPREHENSION) {
-            if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0) {
-              if (config.he_crc_click === true) {
-                const hint = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('…', '').replace('...', '');
-                addSpeech(CHALLENGE_JUDGE_QS, hint);
-                addedSpeech = true;
-              }
-            }
-          }
-        }
-      }
+      setupNewPage();
     } else {
-      // we detected no content to use, so we are not interested in this page
       newPage = false;
+    }
+  }
+
+  function setupNewPage () {
+    if (newPage === true) {
+      if (document.querySelector(ANSWER_QS) !== null) {
+        renderAnswerSpeakButton();
+      } else {
+        if (challenge === LISTEN_COMPREHENSION) setupListenComprehension();
+        if (challenge === FORM) setupForm();
+        if (challenge === GAP_FILL) setupGapFill();
+        if (challenge === DIALOGUE) setupDialogue();
+        if (challenge === TAP_COMPLETE) setupTapComplete();
+        if (challenge === READ_COMPREHENSION) setupReadComprehension();
+        if (challenge === (TRANSLATE || COMPLETE_REVERSE_TRANSLATION || NAME || SPEAK || LISTEN_TAP || LISTEN)) setupIntroSpeakButton();
+      }
+      if (challenge === TAP_CLOZE_TABLE) setupTapClozeTable();
+    }
+  }
+}
+
+function setupTapClozeTable () {
+  if (document.querySelector(SPEAK_INTRO_QS) === null) renderIntroSpeakButton(introChallengeTapClozeTable(), config.he_ctct_autointro);
+  if (document.querySelector(ANSWER_QS) !== null) renderAnswerSpeakButton(prepareChallengeTapClozeTable(), config.he_ctct_auto);
+
+  function introChallengeTapClozeTable () {
+    const speaker = document.createElement('div');
+    speaker.innerHTML = speakerButton;
+    speaker.children[0].id = SPEAK_INTRO;
+    speaker.children[0].style = 'width:40px; height:40px; background:transparent; padding-bottom:15px; margin-bottom:-10px; margin-right:0px;';
+    document.querySelectorAll(HINT_TOKEN_QS)[1].insertAdjacentElement('beforeBegin', speaker);
+    return document.querySelectorAll(HINT_TOKEN_QS)[1].innerText;
+  }
+
+  function prepareChallengeTapClozeTable () {
+    if (document.querySelector(RIGHT_ANSWER_QS)) {
+      // it reads kind of 'vous\t\ns\navez' and should be 'vous savez'
+      let read = document.querySelectorAll('[data-test="hint-token"]')[2].parentNode.parentNode.parentNode.innerText.replace('\t\n', ' ').replace('\n', '');
+      read += '\n' + document.querySelectorAll('[data-test="hint-token"]')[3].parentNode.parentNode.parentNode.innerText.replace('\t\n', ' ').replace('\n', '');
+      return read;
+    }
+    if (document.querySelector(WRONG_ANSWER_QS)) {
+      const answer = document.querySelector(ANSWER_CLASS);
+      if (answer.lastElementChild) {
+        return answer.lastElementChild.innerText;
+      } else {
+        return answer.innerText;
+      }
+    }
+  }
+}
+
+function setupIntroSpeakButton () {
+  renderIntroSpeakButton();
+}
+
+function setupReadComprehension () {
+  renderIntroSpeakButton();
+  if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0) {
+    if (config.he_crc_click === true) {
+      const hint = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('…', '').replace('...', '');
+      addSpeech(CHALLENGE_JUDGE_QS, hint);
+      addedSpeech = true;
+    }
+  }
+}
+
+function setupTapComplete () {
+  renderIntroSpeakButton();
+  if (addedSpeech === false && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
+    if (config.he_ctc_click === true) {
+      addSpeech(CHALLENGE_TAP_TOKEN_QS);
+      addedSpeech = true;
+    }
+  }
+}
+
+function setupDialogue () {
+  renderIntroSpeakButton();
+  if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
+    if (config.he_cd_click === true) {
+      addSpeech(CHALLENGE_JUDGE_QS);
+      addedSpeech = true;
+    }
+  }
+}
+
+function setupGapFill () {
+  renderIntroSpeakButton();
+  if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
+    if (config.he_cgf_click === true) {
+      addSpeech(CHALLENGE_JUDGE_QS);
+      addedSpeech = true;
+    }
+  }
+}
+
+function setupForm () {
+  renderIntroSpeakButton();
+  if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0) {
+    if (config.he_cf_click === true) {
+      addSpeech(CHALLENGE_JUDGE_QS);
+      addedSpeech = true;
+    }
+  }
+}
+
+function setupListenComprehension () {
+  renderIntroSpeakButton();
+  if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
+    if (config.he_clc_click === true) {
+      const hint = document.querySelector(HINT_TOKEN_QS).parentNode.innerText.replace('…', '').replace('...', '');
+      addSpeech(CHALLENGE_JUDGE_QS, hint);
+      addedSpeech = true;
     }
   }
 }
@@ -662,43 +729,41 @@ function prepareChallengeListenTap () {
   }
 }
 
-function renderIntroSpeakButton () {
-  if (document.querySelector(SPEAK_INTRO_QS) === null) {
-    let read = '';
-    const challenge = getChallengeType()[0];
-
-    if (challenge === DIALOGUE) read = introChallengeDialogue();
-    if (challenge === READ_COMPREHENSION) read = introChallengeReadComprehension();
-    if (challenge === FORM) read = introChallengeForm();
-    if (challenge === GAP_FILL || challenge === TAP_COMPLETE) read = introChallengeGapFill();
-
+function renderIntroSpeakButton (read = '', click = false) {
+  if (document.querySelector(SPEAK_INTRO_QS) === null || challenge === TAP_CLOZE_TABLE) {
+    if (read === '') read = getIntroReadText();
     if (read !== '') {
       if (DEBUG) document.querySelector('#mySentence').innerText = read;
       debug('intro = ' + read);
       const utter = generateUtter(read);
       addSpeakListener(SPEAK_INTRO, utter, read);
-      if (challenge === DIALOGUE && config.he_cd_autointro) {
-        document.querySelector(SPEAK_INTRO_QS).click();
-      }
-      if (challenge === READ_COMPREHENSION && config.he_crc_autointro) {
-        document.querySelector(SPEAK_INTRO_QS).click();
-      }
-      if (challenge === FORM && config.he_cf_autointro) {
-        document.querySelector(SPEAK_INTRO_QS).click();
-      }
-      if (challenge === GAP_FILL && config.he_cgf_autointro) {
-        document.querySelector(SPEAK_INTRO_QS).click();
-      }
-      if (challenge === TAP_COMPLETE && config.he_ctc_autointro) {
-        document.querySelector(SPEAK_INTRO_QS).click();
-      }
+      clickIntroButton(DIALOGUE, 'cd');
+      clickIntroButton(READ_COMPREHENSION, 'crc');
+      clickIntroButton(FORM, 'cf');
+      clickIntroButton(GAP_FILL, 'cgf');
+      clickIntroButton(TAP_COMPLETE, 'ctc');
+      // clickIntroButton(TAP_CLOZE_TABLE, 'ctct');
+      if (click) document.querySelector(SPEAK_INTRO_QS).click();
     }
   }
 }
 
-function renderAnswerSpeakButton () {
-  let read = '';
-  const challenge = getChallengeType()[0];
+function getIntroReadText () {
+  if (challenge === DIALOGUE) return introChallengeDialogue();
+  if (challenge === READ_COMPREHENSION) return introChallengeReadComprehension();
+  if (challenge === FORM) return introChallengeForm();
+  if (challenge === GAP_FILL || challenge === TAP_COMPLETE) return introChallengeGapFill();
+  // if (challenge === TAP_CLOZE_TABLE) return introChallengeTapClozeTable();
+}
+
+function clickIntroButton (challengeName, shortName) {
+  const key = 'he_' + shortName + '_autointro';
+  if (challenge === challengeName && config[key]) {
+    document.querySelector(SPEAK_INTRO_QS).click();
+  }
+}
+
+function renderAnswerSpeakButton (read = '', auto = false) {
   if (challenge === FORM) {
     read = prepareChallengeForm();
   }
@@ -726,7 +791,8 @@ function renderAnswerSpeakButton () {
   if (challenge === LISTEN_TAP) {
     read = prepareChallengeListenTap();
   }
-  debug('read = ' + read);
+
+  debug('renderAnswerSpeakButton read = ' + read);
   const utter = generateUtter(read);
   // add speaker button to answer and fill in the correct answer in the headline
   updateText(read);
@@ -740,38 +806,42 @@ function renderAnswerSpeakButton () {
   addedSpeech = false;
   // if you like autoplay, it waits 1 second an plays it
   if (((challenge === TRANSLATE) || (challenge === COMPLETE_REVERSE_TRANSLATION)) && config.he_ct_auto === true) {
-    timeoutAutoplay(challenge, utter);
+    timeoutAutoplay(utter);
   }
   if (challenge === GAP_FILL && config.he_cgf_auto === true) {
-    timeoutAutoplay(challenge, utter);
+    timeoutAutoplay(utter);
   }
   if (challenge === TAP_COMPLETE && config.he_ctc_auto === true) {
-    timeoutAutoplay(challenge, utter);
+    timeoutAutoplay(utter);
   }
   if (challenge === FORM && config.he_cf_auto === true) {
-    timeoutAutoplay(challenge, utter);
+    timeoutAutoplay(utter);
   }
   if (challenge === DIALOGUE && config.he_cd_auto === true) {
-    timeoutAutoplay(challenge, utter);
+    timeoutAutoplay(utter);
   }
   if (challenge === NAME && config.he_cn_auto === true) {
-    timeoutAutoplay(challenge, utter);
+    timeoutAutoplay(utter);
   }
   if (challenge === SPEAK && config.he_cs_auto === true) {
-    timeoutAutoplay(challenge, utter);
+    timeoutAutoplay(utter);
   }
   if (challenge === LISTEN_TAP && config.he_clt_auto === true) {
-    timeoutAutoplay(challenge, utter);
+    timeoutAutoplay(utter);
   }
   if (challenge === READ_COMPREHENSION && config.he_crc_auto === true) {
-    timeoutAutoplay(challenge, utter);
+    timeoutAutoplay(utter);
   }
   if (challenge === LISTEN && config.he_cl_auto === true) {
-    timeoutAutoplay(challenge, utter);
+    timeoutAutoplay(utter);
   }
+  if (challenge === TAP_CLOZE_TABLE && config.he_ctct_auto === true) {
+    timeoutAutoplay(utter);
+  }
+  if (auto) timeoutAutoplay(utter);
 }
 
-function timeoutAutoplay (challenge, utter) {
+function timeoutAutoplay (utter) {
   timeout = setTimeout(function () {
     debug('auto play ' + challenge);
     synth.cancel();
@@ -829,7 +899,7 @@ function buildDebug () {
     if (challenge === DIALOGUE && config.he_cd_click) speakOption = 'enabled';
     if (challenge === DIALOGUE && config.he_cd_autointro) autoIntro = 'enabled';
     if (challenge === NAME && config.he_cn_auto) autoPlay = 'enabled';
-    if (challenge === LISTEN_COMPREHENSION && config.he_lc_click) speakOption = 'enabled';
+    if (challenge === LISTEN_COMPREHENSION && config.he_clc_click) speakOption = 'enabled';
     if (challenge === SPEAK && config.he_cs_auto) autoPlay = 'enabled';
     buildDebugDiv(speakOption, autoPlay, autoIntro);
   }
