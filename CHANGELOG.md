@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.63
+## 0.63.2
+
+### changed
+
+- challenge translate refactored
+
+## 0.63.1
 
 ### changed
 
