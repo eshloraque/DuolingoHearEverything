@@ -566,7 +566,7 @@ function setupTranslate () {
 function setupListenTap () {
   if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeListenTap(), config.he_clt_auto);
   if (!page.isOptionSpeechAdded && config.he_clt_click && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
-    addSpeech(CHALLENGE_TAP_TOKEN_QS);
+    addSpeech(CHALLENGE_TAP_TOKEN_QS, '', true);
   }
 
   function prepareChallengeListenTap () {
@@ -767,8 +767,6 @@ function prepareChallengeSpeak () {
   }
 }
 
-
-
 function renderIntroSpeakButton (read = '', click = false) {
   if (document.querySelector(SPEAK_INTRO_QS) === null || challenge === TAP_CLOZE_TABLE) {
     if (read === '') read = getIntroReadText();
@@ -828,7 +826,7 @@ function renderAnswerSpeakButton (read = '', auto = false) {
   if (challenge === SPEAK) {
     read = prepareChallengeSpeak();
   }
-/*   if (challenge === LISTEN_TAP) {
+  /*   if (challenge === LISTEN_TAP) {
     read = prepareChallengeListenTap();
   } */
 
@@ -865,7 +863,7 @@ function renderAnswerSpeakButton (read = '', auto = false) {
   if (challenge === SPEAK && config.he_cs_auto === true) {
     timeoutAutoplay(utter);
   }
-/*   if (challenge === LISTEN_TAP && config.he_clt_auto === true) {
+  /*   if (challenge === LISTEN_TAP && config.he_clt_auto === true) {
     timeoutAutoplay(utter);
   } */
   /*   if (challenge === READ_COMPREHENSION && config.he_crc_auto === true) {
@@ -986,13 +984,13 @@ function getChallengeType () {
   }
 }
 
-function addSpeech (qs, t = '') {
+function addSpeech (qs, t = '', overrideDuo = false) {
   if (t !== '') t += ' ';
   const options = document.querySelectorAll(qs);
   for (const option of options) {
     const utter = generateUtter(t + option.innerText);
     option.parentNode.addEventListener('click', function () {
-      page.isReadingOptions = true;
+      if (overrideDuo) page.isReadingOptions = true;
       debug('Option read = ' + t + option.innerText);
       synth.cancel();
       synth.speak(utter);
