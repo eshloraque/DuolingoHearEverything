@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Duolingo HearEverything
 // @namespace    http://tampermonkey.net/
-// @version      0.63.2
+// @version      0.64
 // @description  Reads aloud most sentences in Duo's challenges.
 // @author       Esh
 // @match        https://*.duolingo.com/*
@@ -10,7 +10,7 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-const VERSION = '0.63.2 --- 1 ---';
+const VERSION = '0.64 --- 3 ---';
 
 const LOG_STRING = 'Duolingo HearEverything: ';
 let voiceSelect;
@@ -21,14 +21,14 @@ let hover = true;
 
 const synth = window.speechSynthesis;
 let voices = [];
-let newPage = false;
-let addedSpeech = false;
 const challengesUrls = [];
 const challengesReads = [];
 let timeout;
 let howlPlay = false;
 let challenge = '';
 const page = {};
+page.isNewPage = false;
+page.isOptionSpeechAdded = false;
 
 const speakerButton = `
   <a class="_3UpNo _3EXrQ _2VrUB" data-test="speaker-button" title="Listen" id="speak">
@@ -153,22 +153,30 @@ function debug (s) {
 (function (play) {
   // eslint-disable-next-line no-undef
   Howl.prototype.play = function () {
-    if (config.he_muteduo) {
-      debug('intercepting Duo speaking');
-      const read = challengesReads[challengesUrls.indexOf(this._src)];
-      if (DEBUG) document.querySelector('#mySentence').innerText = read;
-      if (typeof read !== 'undefined') {
-        debug('read = ' + read);
-        howlPlay = true;
-        clearTimeout(timeout);
-        const utter = generateUtter(read);
-        synth.cancel();
-        synth.speak(utter);
+    // if we read the options, Duo has to remain silent
+    if (!page.isReadingOptions) {
+      // if Duo is muted, we have to do his job
+      if (config.he_muteduo) {
+        debug('intercepting Duo speaking');
+        const read = challengesReads[challengesUrls.indexOf(this._src)];
+        if (DEBUG) document.querySelector('#mySentence').innerText = read;
+        if (typeof read !== 'undefined') {
+          debug('read = ' + read);
+          howlPlay = true;
+          clearTimeout(timeout);
+          const utter = generateUtter(read);
+          synth.cancel();
+          synth.speak(utter);
+        } else {
+          play.apply(this, arguments);
+        }
       } else {
         play.apply(this, arguments);
       }
     } else {
-      play.apply(this, arguments);
+      // We spoke it, so we can let Duo take over
+      page.isReadingOptions = false;
+      debug('Shhh Duo! I am reading the options');
     }
   };
 // eslint-disable-next-line no-undef
@@ -230,7 +238,7 @@ function readConfig () {
   configChallenge(GAP_FILL, 'cgf', true, true, true);
   configChallenge(LISTEN, 'cl', true, null, null);
   configChallenge(LISTEN_COMPREHENSION, 'clc', null, true, null);
-  configChallenge(LISTEN_TAP, 'clt', true, null, null);
+  configChallenge(LISTEN_TAP, 'clt', true, true, null);
   configChallenge(NAME, 'cn', true, null, null);
   configChallenge(READ_COMPREHENSION, 'crc', true, false, false);
   configChallenge(SPEAK, 'cs', true, null, null);
@@ -303,7 +311,7 @@ function addConfig () {
     const configDialogue = createConfigOption(DIALOGUE, 'cd', true, true, true);
     const configName = createConfigOption(NAME, 'cn', true, false, false);
     const configSpeak = createConfigOption(SPEAK, 'cs', true, false, false);
-    const configListenTap = createConfigOption(LISTEN_TAP, 'clt', true, false, false);
+    const configListenTap = createConfigOption(LISTEN_TAP, 'clt', true, true, false);
     const configReadComprehension = createConfigOption(READ_COMPREHENSION, 'crc', true, true, true);
     const configListen = createConfigOption(LISTEN, 'cl', true, false, false);
     const configTapClozeTable = createConfigOption(TAP_CLOZE_TABLE, 'ctct', true, false, true);
@@ -425,19 +433,18 @@ function start () {
       buildDebug();
       setupNewPage();
     } else {
-      newPage = false;
+      page.isNewPage = false;
     }
   }
 
   function setupNewPage () {
-    if (newPage === true) {
+    if (page.isNewPage) {
       page.isAnswerVisible = (document.querySelector(ANSWER_QS) !== null);
       page.hasIntroSpeakerButton = (document.querySelector(SPEAK_INTRO_QS) !== null);
       page.hasSpeakerButton = (document.querySelector(SPEAKER_BUTTON_QS) !== null);
       page.isWrongAnswer = (document.querySelector(WRONG_ANSWER_QS) !== null);
       page.isRightAnswer = (document.querySelector(RIGHT_ANSWER_QS) !== null);
       page.isRightAnswerTypo = (document.querySelector(RIGHT_ANSWER_TYPO_QS) !== null);
-      // if (document.querySelector(ANSWER_QS) !== null) {
       if (page.isAnswerVisible) {
         renderAnswerSpeakButton();
       } else {
@@ -446,11 +453,12 @@ function start () {
         if (page.challenge === GAP_FILL) setupGapFill();
         if (page.challenge === DIALOGUE) setupDialogue();
         if (page.challenge === TAP_COMPLETE) setupTapComplete();
-        if (page.challenge === (NAME || SPEAK || LISTEN_TAP)) setupIntroSpeakButton();
+        if (page.challenge === (NAME || SPEAK)) setupIntroSpeakButton();
       }
       if (page.challenge === TAP_CLOZE_TABLE) setupTapClozeTable();
       if (page.challenge === READ_COMPREHENSION) setupReadComprehension();
       if (page.challenge === (TRANSLATE || LISTEN || COMPLETE_REVERSE_TRANSLATION)) setupTranslate();
+      if (page.challenge === LISTEN_TAP) setupListenTap();
     }
   }
 }
@@ -473,13 +481,13 @@ function setupTapClozeTable () {
   }
 
   function prepareChallengeTapClozeTable () {
-    if (document.querySelector(RIGHT_ANSWER_QS)) {
+    if (page.isRightAnswer) {
       // it reads kind of 'vous\t\ns\navez' and should be 'vous savez'
       let read = document.querySelectorAll('[data-test="hint-token"]')[2].parentNode.parentNode.parentNode.innerText.replace('\t\n', ' ').replace('\n', '');
       read += '\n' + document.querySelectorAll('[data-test="hint-token"]')[3].parentNode.parentNode.parentNode.innerText.replace('\t\n', ' ').replace('\n', '');
       return read;
     }
-    if (document.querySelector(WRONG_ANSWER_QS)) {
+    if (page.isWrongAnswer) {
       const answer = document.querySelector(ANSWER_CLASS);
       if (answer.lastElementChild) {
         return answer.lastElementChild.innerText;
@@ -493,13 +501,9 @@ function setupTapClozeTable () {
 function setupReadComprehension () {
   if (!page.hasIntroSpeakerButton) renderIntroSpeakButton(introChallengeReadComprehension(), config.he_crc_autointro);
   if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeReadComprehension(), config.he_crc_auto);
-  if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0) {
-    if (config.he_crc_click === true) {
-      const hint = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('…', '').replace('...', '');
-      addSpeech(CHALLENGE_JUDGE_QS, hint);
-      // deprecated
-      addedSpeech = true;
-    }
+  if (!page.isOptionSpeechAdded && config.he_crc_click && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0) {
+    const hint = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('…', '').replace('...', '');
+    addSpeech(CHALLENGE_JUDGE_QS, hint);
   }
 
   function prepareChallengeReadComprehension () {
@@ -559,53 +563,74 @@ function setupTranslate () {
   }
 }
 
+function setupListenTap () {
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeListenTap(), config.he_clt_auto);
+  if (!page.isOptionSpeechAdded && config.he_clt_click && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
+    addSpeech(CHALLENGE_TAP_TOKEN_QS);
+  }
+
+  function prepareChallengeListenTap () {
+    if (page.isWrongAnswer) {
+      const answer = document.querySelector(ANSWER_CLASS);
+      if (answer.lastElementChild) {
+        return answer.lastElementChild.innerText;
+      } else {
+        return answer.innerText;
+      }
+    }
+    if (page.isRightAnswer) {
+      if (document.querySelector(CHALLENGE_TAP_TOKEN_QS)) {
+        const read = document.querySelector(CHALLENGE_TAP_TOKEN_QS).parentNode.parentNode.innerText;
+        return read.replace(/\n/g, ' ').replace(/' /g, "'");
+      }
+    }
+  }
+}
+
 function setupTapComplete () {
   renderIntroSpeakButton();
-  if (addedSpeech === false && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
-    if (config.he_ctc_click === true) {
-      addSpeech(CHALLENGE_TAP_TOKEN_QS);
-      addedSpeech = true;
-    }
+  if (page.isOptionSpeechAdded === false && config.he_ctc_click && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
+    addSpeech(CHALLENGE_TAP_TOKEN_QS);
   }
 }
 
 function setupDialogue () {
   renderIntroSpeakButton();
-  if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
+  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
     if (config.he_cd_click === true) {
       addSpeech(CHALLENGE_JUDGE_QS);
-      addedSpeech = true;
+      page.isOptionSpeechAdded = true;
     }
   }
 }
 
 function setupGapFill () {
   renderIntroSpeakButton();
-  if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
+  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
     if (config.he_cgf_click === true) {
       addSpeech(CHALLENGE_JUDGE_QS);
-      addedSpeech = true;
+      page.isOptionSpeechAdded = true;
     }
   }
 }
 
 function setupForm () {
   renderIntroSpeakButton();
-  if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0) {
+  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0) {
     if (config.he_cf_click === true) {
       addSpeech(CHALLENGE_JUDGE_QS);
-      addedSpeech = true;
+      page.isOptionSpeechAdded = true;
     }
   }
 }
 
 function setupListenComprehension () {
   renderIntroSpeakButton();
-  if (addedSpeech === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
+  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
     if (config.he_clc_click === true) {
       const hint = document.querySelector(HINT_TOKEN_QS).parentNode.innerText.replace('…', '').replace('...', '');
       addSpeech(CHALLENGE_JUDGE_QS, hint);
-      addedSpeech = true;
+      page.isOptionSpeechAdded = true;
     }
   }
 }
@@ -742,12 +767,7 @@ function prepareChallengeSpeak () {
   }
 }
 
-function prepareChallengeListenTap () {
-  if (document.querySelector(CHALLENGE_TAP_TOKEN_QS)) {
-    const read = document.querySelector(CHALLENGE_TAP_TOKEN_QS).parentNode.parentNode.innerText;
-    return read.replace(/\n/g, ' ').replace(/' /g, "'");
-  }
-}
+
 
 function renderIntroSpeakButton (read = '', click = false) {
   if (document.querySelector(SPEAK_INTRO_QS) === null || challenge === TAP_CLOZE_TABLE) {
@@ -808,9 +828,9 @@ function renderAnswerSpeakButton (read = '', auto = false) {
   if (challenge === SPEAK) {
     read = prepareChallengeSpeak();
   }
-  if (challenge === LISTEN_TAP) {
+/*   if (challenge === LISTEN_TAP) {
     read = prepareChallengeListenTap();
-  }
+  } */
 
   debug('renderAnswerSpeakButton read = ' + read);
   const utter = generateUtter(read);
@@ -821,9 +841,8 @@ function renderAnswerSpeakButton (read = '', auto = false) {
   // do it for every page to trigger the Duo speaker button also
   document.removeEventListener('keydown', myShortcutListener);
   document.addEventListener('keydown', myShortcutListener);
-
-  newPage = false;
-  addedSpeech = false;
+  page.isNewPage = false;
+  page.isOptionSpeechAdded = false;
   // if you like autoplay, it waits 1 second an plays it
   /*   if (((challenge === TRANSLATE) || (challenge === COMPLETE_REVERSE_TRANSLATION)) && config.he_ct_auto === true) {
     timeoutAutoplay(utter);
@@ -846,9 +865,9 @@ function renderAnswerSpeakButton (read = '', auto = false) {
   if (challenge === SPEAK && config.he_cs_auto === true) {
     timeoutAutoplay(utter);
   }
-  if (challenge === LISTEN_TAP && config.he_clt_auto === true) {
+/*   if (challenge === LISTEN_TAP && config.he_clt_auto === true) {
     timeoutAutoplay(utter);
-  }
+  } */
   /*   if (challenge === READ_COMPREHENSION && config.he_crc_auto === true) {
     timeoutAutoplay(utter);
   } */
@@ -948,7 +967,7 @@ function checkNewPage () {
     nP.id = 'myNewPage';
     document.querySelector('[data-test="challenge-header"]').insertAdjacentElement('afterend', nP);
     debug('Challenge Type = ' + getChallengeType()[0]);
-    newPage = true;
+    page.isNewPage = true;
     if (howlPlay === false) {
       synth.cancel();
     } else {
@@ -972,10 +991,15 @@ function addSpeech (qs, t = '') {
   const options = document.querySelectorAll(qs);
   for (const option of options) {
     const utter = generateUtter(t + option.innerText);
-    option.parentNode.addEventListener('click', function () { synth.cancel(); synth.speak(utter); });
-    debug('Option = ' + t + option.innerText);
+    option.parentNode.addEventListener('click', function () {
+      page.isReadingOptions = true;
+      debug('Option read = ' + t + option.innerText);
+      synth.cancel();
+      synth.speak(utter);
+    });
+    // debug('Option = ' + t + option.innerText);
   }
-  page.addedSpeech = true;
+  page.isOptionSpeechAdded = true;
 }
 
 function updateText (t) {

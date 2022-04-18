@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.64
+
+### added
+
+- challenge listen tap overrides cartoon character on tap
+
+### changed
+
+- challenge listen tap refactored
+
 ## 0.63.2
 
 ### changed
