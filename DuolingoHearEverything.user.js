@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Duolingo HearEverything
 // @namespace    http://tampermonkey.net/
-// @version      0.64
+// @version      0.64.1
 // @description  Reads aloud most sentences in Duo's challenges.
 // @author       Esh
 // @match        https://*.duolingo.com/*
@@ -10,7 +10,7 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-const VERSION = '0.64 --- 3 ---';
+const VERSION = '0.64.1 --- 1 ---';
 
 const LOG_STRING = 'Duolingo HearEverything: ';
 let voiceSelect;
@@ -97,8 +97,6 @@ const TEXT_INPUT = 'challenge-text-input';
 const TEXT_INPUT_QS = '[data-test="' + TEXT_INPUT + '"]';
 const SPEAK_INTRO = 'speakIntro';
 const SPEAK_INTRO_QS = '#' + SPEAK_INTRO;
-// const NEXT_BUTTON = 'player-next';
-// const NEXT_BUTTON_QS = '[data-test="' + NEXT_BUTTON + '"]';
 const HINT_TOKEN = 'hint-token';
 const HINT_TOKEN_QS = '[data-test="' + HINT_TOKEN + '"]';
 
@@ -134,10 +132,10 @@ function debug (s) {
     this.addEventListener('readystatechange', function () {
       if (this.readyState === 4 && this.responseURL.includes('sessions')) {
         if (this.response.challenges) {
-          this.response.challenges.forEach((challenge) => {
-            if (typeof challenge.tts !== 'undefined') {
-              challengesUrls.push(challenge.tts);
-              challengesReads.push(challenge.prompt);
+          this.response.challenges.forEach((rspChallenge) => {
+            if (typeof rspChallenge.tts !== 'undefined') {
+              challengesUrls.push(rspChallenge.tts);
+              challengesReads.push(rspChallenge.prompt);
             }
           });
         }
@@ -362,7 +360,6 @@ function addConfig () {
       voiceSelect = configLanguage.options[configLanguage.selectedIndex].value;
       // eslint-disable-next-line no-undef
       GM_setValue('voiceSelect', voiceSelect);
-      // setVoice();
     });
 
     setVisibleConfig();
@@ -922,29 +919,35 @@ function myShortcutListener (event) {
 function buildDebug () {
   if (DEBUG && !document.querySelector('#myChallenge')) {
     let autoPlay = 'disabled';
-    let speakOption = 'disabled';
+    let speakOptions = 'disabled';
     let autoIntro = 'disabled';
-    if (page.challenge === TRANSLATE && config.he_ct_auto) autoPlay = 'enabled';
-    if (page.challenge === GAP_FILL && config.he_cgf_auto) autoPlay = 'enabled';
-    if (page.challenge === GAP_FILL && config.he_cgf_click) speakOption = 'enabled';
-    if (page.challenge === TAP_COMPLETE && config.he_ctc_auto) autoPlay = 'enabled';
-    if (page.challenge === TAP_COMPLETE && config.he_ctc_click) speakOption = 'enabled';
-    if (page.challenge === FORM && config.he_cf_auto) autoPlay = 'enabled';
-    if (page.challenge === FORM && config.he_cf_click) speakOption = 'enabled';
-    if (page.challenge === DIALOGUE && config.he_cd_auto) autoPlay = 'enabled';
-    if (page.challenge === DIALOGUE && config.he_cd_click) speakOption = 'enabled';
-    if (page.challenge === DIALOGUE && config.he_cd_autointro) autoIntro = 'enabled';
-    if (page.challenge === NAME && config.he_cn_auto) autoPlay = 'enabled';
-    if (page.challenge === LISTEN_COMPREHENSION && config.he_clc_click) speakOption = 'enabled';
-    if (page.challenge === SPEAK && config.he_cs_auto) autoPlay = 'enabled';
-    buildDebugDiv(speakOption, autoPlay, autoIntro);
+    autoPlay = getEnabled(autoPlay, TRANSLATE, config.he_ct_auto);
+    autoPlay = getEnabled(autoPlay, GAP_FILL, config.he_cgf_auto);
+    speakOptions = getEnabled(speakOptions, GAP_FILL, config.he_cgf_click);
+    autoPlay = getEnabled(autoPlay, TAP_COMPLETE, config.he_ctc_auto);
+    speakOptions = getEnabled(speakOptions, TAP_COMPLETE, config.he_ctc_click);
+    autoPlay = getEnabled(autoPlay, FORM, config.he_cf_auto);
+    speakOptions = getEnabled(speakOptions, FORM, config.he_cf_click);
+    autoPlay = getEnabled(autoPlay, DIALOGUE, config.he_cd_auto);
+    speakOptions = getEnabled(speakOptions, DIALOGUE, config.he_cd_click);
+    autoIntro = getEnabled(autoIntro, DIALOGUE, config.he_cd_autointro);
+    autoPlay = getEnabled(autoPlay, NAME, config.he_cn_auto);
+    speakOptions = getEnabled(speakOptions, LISTEN_COMPREHENSION, config.he_clc_click);
+    autoPlay = getEnabled(autoPlay, SPEAK, config.he_cs_auto);
+    buildDebugDiv(speakOptions, autoPlay, autoIntro);
   }
 
-  function buildDebugDiv (speakOption, autoPlay, autoIntro) {
+  // sets a option to 'enabled' if challengeName and configOption are true for this page
+  function getEnabled (option, challengeName, configOption) {
+    if (page.challenge === challengeName && configOption) option = 'enabled';
+    return option;
+  }
+
+  function buildDebugDiv (speakOptions, autoPlay, autoIntro) {
     const debugDiv = document.createElement('div');
     debugDiv.innerHTML = `<span>Challenge-Name: <span id="myChallenge">${getChallengeType()[0]}</span></span>
       <span>Sentence to speak: <span id="mySentence"></span></span>
-      <span>Speak options: <span id="myOptions">${speakOption}</span></span>
+      <span>Speak options: <span id="myOptions">${speakOptions}</span></span>
       <span>Auto play: <span id="myAutoPlay">${autoPlay}</span></span>
       <span>Auto intro: <span id="myAutoIntro">${autoIntro}</span></span>
       <span>Not found: <span id="myNotFound"></span></span>`;
@@ -995,7 +998,6 @@ function addSpeech (qs, t = '', overrideDuo = false) {
       synth.cancel();
       synth.speak(utter);
     });
-    // debug('Option = ' + t + option.innerText);
   }
   page.isOptionSpeechAdded = true;
 }
