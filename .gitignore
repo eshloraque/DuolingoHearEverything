@@ -1,0 +1,5 @@
+node_modules/
+DuolingoHearEverything.code-workspace
+package-lock.json
+package.json
+.eslintrc.yml

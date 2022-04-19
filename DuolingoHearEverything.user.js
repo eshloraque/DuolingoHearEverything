@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Duolingo HearEverything
 // @namespace    http://tampermonkey.net/
-// @version      0.64.1
+// @version      0.64.2
 // @description  Reads aloud most sentences in Duo's challenges.
 // @author       Esh
 // @match        https://*.duolingo.com/*
@@ -10,7 +10,7 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-const VERSION = '0.64.1 --- 1 ---';
+const VERSION = '0.64.2 --- 1 ---';
 
 const LOG_STRING = 'Duolingo HearEverything: ';
 let voiceSelect;
@@ -25,7 +25,6 @@ const challengesUrls = [];
 const challengesReads = [];
 let timeout;
 let howlPlay = false;
-let challenge = '';
 const page = {};
 page.isNewPage = false;
 page.isOptionSpeechAdded = false;
@@ -155,11 +154,10 @@ function debug (s) {
     if (!page.isReadingOptions) {
       // if Duo is muted, we have to do his job
       if (config.he_muteduo) {
-        debug('intercepting Duo speaking');
         const read = challengesReads[challengesUrls.indexOf(this._src)];
         if (DEBUG) document.querySelector('#mySentence').innerText = read;
         if (typeof read !== 'undefined') {
-          debug('read = ' + read);
+          debug('intercepting Duo speaking = ' + read);
           howlPlay = true;
           clearTimeout(timeout);
           const utter = generateUtter(read);
@@ -244,7 +242,7 @@ function readConfig () {
   configChallenge(TAP_COMPLETE, 'ctc', true, false, true);
   configChallenge(TRANSLATE, 'ct', true, null, null);
 
-  // auto/click/autointro default: true/false, if not used: null
+  // auto/click/autointro default: true/false, if not used: nquull
   function configChallenge (_challengeName, shortName, auto, click, autointro) {
     const keyAuto = 'he_' + shortName + '_auto';
     const keyClick = 'he_' + shortName + '_click';
@@ -414,7 +412,7 @@ function addConfig () {
     list.forEach((entry) => {
       document.querySelector('#config-' + entry).style = 'border: none; padding: 3px;';
     });
-    const element = document.querySelector('#config-' + challenge);
+    const element = document.querySelector('#config-' + page.challenge);
     if (element !== null) element.style = 'border: 1px solid gray; border-radius: 2px; padding: 3px;';
   }
 }
@@ -422,50 +420,57 @@ function addConfig () {
 // start whenever the mutation observer wants you to start
 function start () {
   if (window.location.pathname.includes('/skill') && document.querySelector('[data-test="challenge-header"]')) {
-    addConfig();
     checkNewPage();
-    challenge = getChallengeType()[0];
-    page.challenge = getChallengeType()[0];
     if (page.challenge) {
+      addConfig();
       buildDebug();
-      setupNewPage();
+      if (page.isNewPage) {
+        setupPageInformation();
+        setupAllChallenges();
+        resetPageAtVisibleAnswer();
+      }
     } else {
       page.isNewPage = false;
     }
   }
 
-  function setupNewPage () {
-    if (page.isNewPage) {
-      page.isAnswerVisible = (document.querySelector(ANSWER_QS) !== null);
-      page.hasIntroSpeakerButton = (document.querySelector(SPEAK_INTRO_QS) !== null);
-      page.hasSpeakerButton = (document.querySelector(SPEAKER_BUTTON_QS) !== null);
-      page.isWrongAnswer = (document.querySelector(WRONG_ANSWER_QS) !== null);
-      page.isRightAnswer = (document.querySelector(RIGHT_ANSWER_QS) !== null);
-      page.isRightAnswerTypo = (document.querySelector(RIGHT_ANSWER_TYPO_QS) !== null);
-      if (page.isAnswerVisible) {
-        renderAnswerSpeakButton();
-      } else {
-        if (page.challenge === LISTEN_COMPREHENSION) setupListenComprehension();
-        if (page.challenge === FORM) setupForm();
-        if (page.challenge === GAP_FILL) setupGapFill();
-        if (page.challenge === DIALOGUE) setupDialogue();
-        if (page.challenge === TAP_COMPLETE) setupTapComplete();
-        if (page.challenge === (NAME || SPEAK)) setupIntroSpeakButton();
-      }
-      if (page.challenge === TAP_CLOZE_TABLE) setupTapClozeTable();
-      if (page.challenge === READ_COMPREHENSION) setupReadComprehension();
-      if (page.challenge === (TRANSLATE || LISTEN || COMPLETE_REVERSE_TRANSLATION)) setupTranslate();
-      if (page.challenge === LISTEN_TAP) setupListenTap();
+  function setupPageInformation () {
+    page.isAnswerVisible = (document.querySelector(ANSWER_QS) !== null);
+    page.hasIntroSpeakerButton = (document.querySelector(SPEAK_INTRO_QS) !== null);
+    page.hasSpeakerButton = (document.querySelector(SPEAKER_BUTTON_QS) !== null);
+    page.isWrongAnswer = (document.querySelector(WRONG_ANSWER_QS) !== null);
+    page.isRightAnswer = (document.querySelector(RIGHT_ANSWER_QS) !== null);
+    page.isRightAnswerTypo = (document.querySelector(RIGHT_ANSWER_TYPO_QS) !== null);
+  }
+
+  function setupAllChallenges () {
+    if (page.challenge === TAP_CLOZE_TABLE) setupTapClozeTable();
+    if (page.challenge === READ_COMPREHENSION) setupReadComprehension();
+    if (page.challenge === (TRANSLATE || LISTEN || COMPLETE_REVERSE_TRANSLATION)) setupTranslate();
+    if (page.challenge === LISTEN_TAP) setupListenTap();
+    if (page.challenge === TAP_COMPLETE) setupTapComplete();
+    if (page.challenge === DIALOGUE) setupDialogue();
+    if (page.challenge === GAP_FILL) setupGapFill();
+    if (page.challenge === FORM) setupForm();
+    if (page.challenge === LISTEN_COMPREHENSION) setupListenComprehension();
+    if (page.challenge === NAME) setupName();
+    if (page.challenge === SPEAK) setupSpeak();
+  }
+
+  function resetPageAtVisibleAnswer () {
+    if (page.isAnswerVisible) {
+      // Alt + l for Duo or our speaker button
+      document.removeEventListener('keydown', myShortcutListener);
+      document.addEventListener('keydown', myShortcutListener);
+      // reset page to allow new processing
+      page.isNewPage = false;
+      page.isOptionSpeechAdded = false;
     }
   }
 }
 
-function setupIntroSpeakButton () {
-  if (!page.hasIntroSpeakerButton) renderIntroSpeakButton();
-}
-
 function setupTapClozeTable () {
-  if (!page.hasIntroSpeakerButton) renderIntroSpeakButton(introChallengeTapClozeTable(), config.he_ctct_autointro);
+  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeTapClozeTable(), config.he_ctct_autointro);
   if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTapClozeTable(), config.he_ctct_auto);
 
   function introChallengeTapClozeTable () {
@@ -480,8 +485,8 @@ function setupTapClozeTable () {
   function prepareChallengeTapClozeTable () {
     if (page.isRightAnswer) {
       // it reads kind of 'vous\t\ns\navez' and should be 'vous savez'
-      let read = document.querySelectorAll('[data-test="hint-token"]')[2].parentNode.parentNode.parentNode.innerText.replace('\t\n', ' ').replace('\n', '');
-      read += '\n' + document.querySelectorAll('[data-test="hint-token"]')[3].parentNode.parentNode.parentNode.innerText.replace('\t\n', ' ').replace('\n', '');
+      let read = document.querySelectorAll(HINT_TOKEN_QS)[2].parentNode.parentNode.parentNode.innerText.replace('\t\n', ' ').replace('\n', '');
+      read += '\n' + document.querySelectorAll(HINT_TOKEN_QS)[3].parentNode.parentNode.parentNode.innerText.replace('\t\n', ' ').replace('\n', '');
       return read;
     }
     if (page.isWrongAnswer) {
@@ -496,7 +501,7 @@ function setupTapClozeTable () {
 }
 
 function setupReadComprehension () {
-  if (!page.hasIntroSpeakerButton) renderIntroSpeakButton(introChallengeReadComprehension(), config.he_crc_autointro);
+  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeReadComprehension(), config.he_crc_autointro);
   if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeReadComprehension(), config.he_crc_auto);
   if (!page.isOptionSpeechAdded && config.he_crc_click && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0) {
     const hint = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('…', '').replace('...', '');
@@ -585,90 +590,101 @@ function setupListenTap () {
 }
 
 function setupTapComplete () {
-  renderIntroSpeakButton();
+  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeGapFill(), config.he_ctc_autointro);
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTapComplete(), config.he_ctc_auto);
   if (page.isOptionSpeechAdded === false && config.he_ctc_click && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
     addSpeech(CHALLENGE_TAP_TOKEN_QS);
+  }
+
+  function prepareChallengeTapComplete () {
+    let read;
+    if (page.isRightAnswer) {
+      read = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerText.replace(/\n/g, '');
+    }
+    if (page.isWrongAnswer) {
+      read = document.querySelector(ANSWER_CLASS).innerText;
+    }
+    return read;
   }
 }
 
 function setupDialogue () {
-  renderIntroSpeakButton();
-  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
-    if (config.he_cd_click === true) {
-      addSpeech(CHALLENGE_JUDGE_QS);
-      page.isOptionSpeechAdded = true;
+  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeDialogue(), config.he_cd_autointro);
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeDialogue(), config.he_cd_auto);
+  if (!page.isOptionSpeechAdded && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0 && config.he_cd_click) {
+    addSpeech(CHALLENGE_JUDGE_QS);
+  }
+
+  function prepareChallengeDialogue () {
+    // TODO: remove hard coded references
+    const speaker1 = document.querySelector('[class="' + DIALOGUE_SPEAKER_CLASS + '"]').innerText;
+    let speaker2;
+    if (page.isWrongAnswer) {
+      speaker2 = document.querySelector('._1UqAr._1sqiF').innerText;
+    } else {
+      speaker2 = document.querySelector('[aria-checked="true"]').querySelector('[data-test="challenge-judge-text"]').innerText;
+    }
+    return speaker1 + '\n' + speaker2;
+  }
+
+  function introChallengeDialogue () {
+    if (document.querySelector(HINT_SENTENCE_QS)) {
+      const read = document.querySelector(HINT_SENTENCE_QS).innerText;
+      const speaker = document.createElement('div');
+      speaker.innerHTML = speakerButton;
+      speaker.children[0].id = SPEAK_INTRO;
+      speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-16px; margin-right:0px; padding-bottom:5px';
+      document.querySelector(HINT_SENTENCE_QS).insertAdjacentElement('afterBegin', speaker);
+      return read;
     }
   }
 }
 
 function setupGapFill () {
-  renderIntroSpeakButton();
-  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
-    if (config.he_cgf_click === true) {
-      addSpeech(CHALLENGE_JUDGE_QS);
-      page.isOptionSpeechAdded = true;
-    }
+  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeGapFill(), config.he_cgf_autointro);
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeGapFill(), config.he_cgf_auto);
+  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0 && config.he_cgf_click === true) {
+    addSpeech(CHALLENGE_JUDGE_QS);
   }
-}
 
-function setupForm () {
-  renderIntroSpeakButton();
-  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0) {
-    if (config.he_cf_click === true) {
-      addSpeech(CHALLENGE_JUDGE_QS);
-      page.isOptionSpeechAdded = true;
+  function prepareChallengeGapFill () {
+    let answer;
+    if (page.isRightAnswer) {
+      answer = document.querySelector(RIGHT_OPTION_QS).innerText;
     }
-  }
-}
-
-function setupListenComprehension () {
-  renderIntroSpeakButton();
-  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0) {
-    if (config.he_clc_click === true) {
-      const hint = document.querySelector(HINT_TOKEN_QS).parentNode.innerText.replace('…', '').replace('...', '');
-      addSpeech(CHALLENGE_JUDGE_QS, hint);
-      page.isOptionSpeechAdded = true;
+    if (page.isWrongAnswer) {
+      const answerElement = document.querySelector(ANSWER_CLASS);
+      if (answerElement.lastElementChild) {
+        answer = answerElement.lastElementChild.innerText;
+      } else {
+        answer = answerElement.innerText;
+      }
     }
-  }
-}
-
-function prepareChallengeGapFill () {
-  let answer;
-  if (document.querySelector(RIGHT_ANSWER_QS)) {
-    answer = document.querySelector(RIGHT_OPTION_QS).innerText;
-  }
-  if (document.querySelector(WRONG_ANSWER_QS)) {
-    const answerElement = document.querySelector(ANSWER_CLASS);
-    if (answerElement.lastElementChild) {
-      answer = answerElement.lastElementChild.innerText;
+    // question
+    let read = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerText;
+    // new type, which has two blanc places
+    if (answer.includes('...')) {
+      const answers = answer.split(' ... ');
+      debug('answer 1 = ' + answers[0]);
+      debug('answer 2 = ' + answers[1]);
+      const reads = read.split('\n');
+      debug('reads = ' + reads);
+      if (reads.length === 2) {
+        read = answers[0] + reads[0] + answers[1] + reads[1];
+      } else {
+        read = reads[0] + answers[0] + reads[1] + answers[1] + reads[2];
+      }
     } else {
-      answer = answerElement.innerText;
+      // if the answer is at the start of the sentence, there's no \n
+      if (read.includes('\n')) {
+        read = read.replace('\n', answer);
+      } else {
+        read = answer + read;
+      }
     }
+    document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerHTML = `<span>${read}</span>`;
+    return read;
   }
-  // question
-  let read = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerText;
-  // new type, which has two blanc places
-  if (answer.includes('...')) {
-    const answers = answer.split(' ... ');
-    debug('answer 1 = ' + answers[0]);
-    debug('answer 2 = ' + answers[1]);
-    const reads = read.split('\n');
-    debug('reads = ' + reads);
-    if (reads.length === 2) {
-      read = answers[0] + reads[0] + answers[1] + reads[1];
-    } else {
-      read = reads[0] + answers[0] + reads[1] + answers[1] + reads[2];
-    }
-  } else {
-    // if the answer is at the start of the sentence, there's no \n
-    if (read.includes('\n')) {
-      read = read.replace('\n', answer);
-    } else {
-      read = answer + read;
-    }
-  }
-  document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerHTML = `<span>${read}</span>`;
-  return read;
 }
 
 function introChallengeGapFill () {
@@ -683,195 +699,95 @@ function introChallengeGapFill () {
   }
 }
 
-function prepareChallengeForm () {
-  let answer;
-  if (document.querySelector(RIGHT_ANSWER_QS)) {
-    answer = document.querySelector(RIGHT_OPTION_QS).innerText;
+function setupForm () {
+  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeForm(), config.he_cf_autointro);
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeForm(), config.he_cf_auto);
+  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0 && config.he_cf_click === true) {
+    addSpeech(CHALLENGE_JUDGE_QS);
   }
-  if (document.querySelector(WRONG_ANSWER_QS)) {
-    const answerElement = document.querySelector(ANSWER_CLASS);
-    if (answerElement.lastElementChild) {
-      answer = answerElement.lastElementChild.innerText;
-    } else {
-      answer = answerElement.innerText;
+
+  function prepareChallengeForm () {
+    let answer;
+    if (page.isRightAnswer) {
+      answer = document.querySelector(RIGHT_OPTION_QS).innerText;
     }
-  }
-  const read = document.querySelector(FORM_PROMPT_QS).getAttribute('data-prompt').replace(/_+/, answer);
-  document.querySelector(FORM_PROMPT_QS).innerHTML = `<span>${read}</span>`;
-  return read;
-}
-
-function introChallengeForm () {
-  if (document.querySelector(FORM_PROMPT_QS)) {
-    const read = document.querySelector(FORM_PROMPT_QS).getAttribute('data-prompt').replace(/_+/, '\n');
-    const speaker = document.createElement('div');
-    speaker.innerHTML = speakerButton;
-    speaker.children[0].id = SPEAK_INTRO;
-    speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-16px; margin-right:0px; padding-bottom:5px';
-    document.querySelector(FORM_PROMPT_QS).insertAdjacentElement('afterBegin', speaker);
+    if (page.isWrongAnswer) {
+      const answerElement = document.querySelector(ANSWER_CLASS);
+      if (answerElement.lastElementChild) {
+        answer = answerElement.lastElementChild.innerText;
+      } else {
+        answer = answerElement.innerText;
+      }
+    }
+    const read = document.querySelector(FORM_PROMPT_QS).getAttribute('data-prompt').replace(/_+/, answer);
+    document.querySelector(FORM_PROMPT_QS).innerHTML = `<span>${read}</span>`;
     return read;
   }
-}
 
-function prepareChallengeName () {
-  let read;
-  if (document.querySelector(RIGHT_ANSWER_QS)) {
-    read = document.querySelector(TEXT_INPUT_QS).value;
-  }
-  if (document.querySelector(WRONG_ANSWER_QS)) {
-    read = document.querySelector(ANSWER_CLASS).innerText;
-  }
-  return read;
-}
-
-function prepareChallengeTapComplete () {
-  let read;
-  if (document.querySelector(RIGHT_ANSWER_QS)) {
-    read = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerText.replace(/\n/g, '');
-  }
-  if (document.querySelector(WRONG_ANSWER_QS)) {
-    read = document.querySelector(ANSWER_CLASS).innerText;
-  }
-  return read;
-}
-
-function prepareChallengeDialogue () {
-  const speaker1 = document.querySelector('[class="' + DIALOGUE_SPEAKER_CLASS + '"]').innerText;
-  let speaker2;
-  if (document.querySelector(WRONG_ANSWER_QS)) {
-    speaker2 = document.querySelector('._1UqAr._1sqiF').innerText;
-  } else {
-    speaker2 = document.querySelector('[aria-checked="true"]').querySelector('[data-test="challenge-judge-text"]').innerText;
-  }
-  return speaker1 + '\n' + speaker2;
-}
-
-function introChallengeDialogue () {
-  if (document.querySelector(HINT_SENTENCE_QS)) {
-    const read = document.querySelector(HINT_SENTENCE_QS).innerText;
-    const speaker = document.createElement('div');
-    speaker.innerHTML = speakerButton;
-    speaker.children[0].id = SPEAK_INTRO;
-    speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-16px; margin-right:0px; padding-bottom:5px';
-    document.querySelector(HINT_SENTENCE_QS).insertAdjacentElement('afterBegin', speaker);
-    return read;
-  }
-}
-
-function prepareChallengeSpeak () {
-  if (document.querySelector(HINT_TOKEN_QS)) {
-    return document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
-  }
-}
-
-function renderIntroSpeakButton (read = '', click = false) {
-  if (document.querySelector(SPEAK_INTRO_QS) === null || challenge === TAP_CLOZE_TABLE) {
-    if (read === '') read = getIntroReadText();
-    if (read !== '') {
-      if (DEBUG) document.querySelector('#mySentence').innerText = read;
-      debug('intro = ' + read);
-      const utter = generateUtter(read);
-      addSpeakListener(SPEAK_INTRO, utter, read);
-      clickIntroButton(DIALOGUE, 'cd');
-      // clickIntroButton(READ_COMPREHENSION, 'crc');
-      clickIntroButton(FORM, 'cf');
-      clickIntroButton(GAP_FILL, 'cgf');
-      clickIntroButton(TAP_COMPLETE, 'ctc');
-      // clickIntroButton(TAP_CLOZE_TABLE, 'ctct');
-      if (click) document.querySelector(SPEAK_INTRO_QS).click();
+  function introChallengeForm () {
+    if (document.querySelector(FORM_PROMPT_QS)) {
+      const read = document.querySelector(FORM_PROMPT_QS).getAttribute('data-prompt').replace(/_+/, '\n');
+      const speaker = document.createElement('div');
+      speaker.innerHTML = speakerButton;
+      speaker.children[0].id = SPEAK_INTRO;
+      speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-16px; margin-right:0px; padding-bottom:5px';
+      document.querySelector(FORM_PROMPT_QS).insertAdjacentElement('afterBegin', speaker);
+      return read;
     }
   }
 }
 
-function getIntroReadText () {
-  if (challenge === DIALOGUE) return introChallengeDialogue();
-  // if (challenge === READ_COMPREHENSION) return introChallengeReadComprehension();
-  if (challenge === FORM) return introChallengeForm();
-  if (challenge === GAP_FILL || challenge === TAP_COMPLETE) return introChallengeGapFill();
-  // if (challenge === TAP_CLOZE_TABLE) return introChallengeTapClozeTable();
+function setupListenComprehension () {
+  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0 && config.he_clc_click === true) {
+    const hint = document.querySelector(HINT_TOKEN_QS).parentNode.innerText.replace('…', '').replace('...', '');
+    addSpeech(CHALLENGE_JUDGE_QS, hint);
+  }
 }
 
-function clickIntroButton (challengeName, shortName) {
-  const key = 'he_' + shortName + '_autointro';
-  if (challenge === challengeName && config[key]) {
+function setupName () {
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeName(), config.he_cn_auto);
+
+  function prepareChallengeName () {
+    let read;
+    if (page.isRightAnswer) {
+      read = document.querySelector(TEXT_INPUT_QS).value;
+    }
+    if (page.isWrongAnswer) {
+      read = document.querySelector(ANSWER_CLASS).innerText;
+    }
+    return read;
+  }
+}
+
+function setupSpeak () {
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeSpeak(), config.he_cs_auto);
+
+  function prepareChallengeSpeak () {
+    if (document.querySelector(HINT_TOKEN_QS)) {
+      return document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
+    }
+  }
+}
+
+function handleIntroReading (read = '', click = false) {
+  if (DEBUG) document.querySelector('#mySentence').innerText = read;
+  debug('intro = ' + read);
+  const utter = generateUtter(read);
+  addSpeakListener(SPEAK_INTRO, utter, read);
+  if (click) {
+    debug('click intro speaker button');
     document.querySelector(SPEAK_INTRO_QS).click();
   }
 }
 
 function renderAnswerSpeakButton (read = '', auto = false) {
-  if (challenge === FORM) {
-    read = prepareChallengeForm();
-  }
-  /*   if (challenge === TRANSLATE || challenge === LISTEN || challenge === COMPLETE_REVERSE_TRANSLATION) {
-    read = prepareChallengeTranslate();
-  } */
-  if (challenge === DIALOGUE) {
-    read = prepareChallengeDialogue();
-  }
-  /*  if (challenge === READ_COMPREHENSION) {
-    read = prepareChallengeReadComprehension();
-  } */
-  if (challenge === NAME) {
-    read = prepareChallengeName();
-  }
-  if (challenge === GAP_FILL) {
-    read = prepareChallengeGapFill();
-  }
-  if (challenge === TAP_COMPLETE) {
-    read = prepareChallengeTapComplete();
-  }
-  if (challenge === SPEAK) {
-    read = prepareChallengeSpeak();
-  }
-  /*   if (challenge === LISTEN_TAP) {
-    read = prepareChallengeListenTap();
-  } */
-
   debug('renderAnswerSpeakButton read = ' + read);
   const utter = generateUtter(read);
   // add speaker button to answer and fill in the correct answer in the headline
   updateText(read);
   // if we have added the speaker button, we find it in the document
   addSpeakListener('speak', utter, read);
-  // do it for every page to trigger the Duo speaker button also
-  document.removeEventListener('keydown', myShortcutListener);
-  document.addEventListener('keydown', myShortcutListener);
-  page.isNewPage = false;
-  page.isOptionSpeechAdded = false;
   // if you like autoplay, it waits 1 second an plays it
-  /*   if (((challenge === TRANSLATE) || (challenge === COMPLETE_REVERSE_TRANSLATION)) && config.he_ct_auto === true) {
-    timeoutAutoplay(utter);
-  } */
-  if (challenge === GAP_FILL && config.he_cgf_auto === true) {
-    timeoutAutoplay(utter);
-  }
-  if (challenge === TAP_COMPLETE && config.he_ctc_auto === true) {
-    timeoutAutoplay(utter);
-  }
-  if (challenge === FORM && config.he_cf_auto === true) {
-    timeoutAutoplay(utter);
-  }
-  if (challenge === DIALOGUE && config.he_cd_auto === true) {
-    timeoutAutoplay(utter);
-  }
-  if (challenge === NAME && config.he_cn_auto === true) {
-    timeoutAutoplay(utter);
-  }
-  if (challenge === SPEAK && config.he_cs_auto === true) {
-    timeoutAutoplay(utter);
-  }
-  /*   if (challenge === LISTEN_TAP && config.he_clt_auto === true) {
-    timeoutAutoplay(utter);
-  } */
-  /*   if (challenge === READ_COMPREHENSION && config.he_crc_auto === true) {
-    timeoutAutoplay(utter);
-  } */
-  if (challenge === LISTEN && config.he_cl_auto === true) {
-    timeoutAutoplay(utter);
-  }
-  /*   if (challenge === TAP_CLOZE_TABLE && config.he_ctct_auto === true) {
-    timeoutAutoplay(utter);
-  } */
   if (auto) timeoutAutoplay(utter);
 }
 
@@ -892,6 +808,22 @@ function addSpeakListener (id, utter, read) {
   } else {
     debug('No speak button found');
   }
+}
+
+function addSpeech (qs, t = '', overrideDuo = false) {
+  if (t !== '') t += ' ';
+  const options = document.querySelectorAll(qs);
+  debug('add speech to options');
+  for (const option of options) {
+    const utter = generateUtter(t + option.innerText);
+    option.parentNode.addEventListener('click', function () {
+      if (overrideDuo) page.isReadingOptions = true;
+      debug('Option read = ' + t + option.innerText);
+      synth.cancel();
+      synth.speak(utter);
+    });
+  }
+  page.isOptionSpeechAdded = true;
 }
 
 function generateUtter (read) {
@@ -964,10 +896,11 @@ function buildDebug () {
 
 function checkNewPage () {
   if (!document.querySelector('#myNewPage')) {
+    page.challenge = getChallengeType()[0];
     const nP = document.createElement('div');
     nP.id = 'myNewPage';
     document.querySelector('[data-test="challenge-header"]').insertAdjacentElement('afterend', nP);
-    debug('Challenge Type = ' + getChallengeType()[0]);
+    debug('Challenge Type = ' + page.challenge);
     page.isNewPage = true;
     if (howlPlay === false) {
       synth.cancel();
@@ -977,6 +910,7 @@ function checkNewPage () {
   }
 }
 
+// TODO: remove returned array
 // returns challenge type or false
 function getChallengeType () {
   const element = document.querySelector('[data-test~="challenge"]');
@@ -985,21 +919,6 @@ function getChallengeType () {
   } else {
     return [false];
   }
-}
-
-function addSpeech (qs, t = '', overrideDuo = false) {
-  if (t !== '') t += ' ';
-  const options = document.querySelectorAll(qs);
-  for (const option of options) {
-    const utter = generateUtter(t + option.innerText);
-    option.parentNode.addEventListener('click', function () {
-      if (overrideDuo) page.isReadingOptions = true;
-      debug('Option read = ' + t + option.innerText);
-      synth.cancel();
-      synth.speak(utter);
-    });
-  }
-  page.isOptionSpeechAdded = true;
 }
 
 function updateText (t) {
