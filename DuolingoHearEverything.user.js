@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Duolingo HearEverything
 // @namespace    http://tampermonkey.net/
-// @version      0.64.2
+// @version      0.65
 // @description  Reads aloud most sentences in Duo's challenges.
 // @author       Esh
 // @match        https://*.duolingo.com/*
@@ -10,7 +10,7 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-const VERSION = '0.64.2 --- 1 ---';
+const VERSION = '0.65 --- 1 ---';
 
 const LOG_STRING = 'Duolingo HearEverything: ';
 let voiceSelect;
@@ -77,6 +77,8 @@ const WRONG_ANSWER = 'blame-incorrect';
 const WRONG_ANSWER_QS = '[data-test~="' + WRONG_ANSWER + '"]';
 const CHALLENGE_TAP_TOKEN = 'challenge-tap-token'; // challenge-translate (tap)
 const CHALLENGE_TAP_TOKEN_QS = '[data-test="' + CHALLENGE_TAP_TOKEN + '"]';
+const CHALLENGE_TAP_TOKEN_TEXT = 'challenge-tap-token-text';
+const CHALLENGE_TAP_TOKEN_TEXT_QS = '[data-test="' + CHALLENGE_TAP_TOKEN_TEXT + '"]';
 const WORD_BANK = 'word-bank'; // if exists it's tap instead of keyboard (challenge-translate)
 const WORD_BANK_QS = '[data-test="' + WORD_BANK + '"]';
 const TRANSLATE_INPUT = 'challenge-translate-input';
@@ -98,6 +100,7 @@ const SPEAK_INTRO = 'speakIntro';
 const SPEAK_INTRO_QS = '#' + SPEAK_INTRO;
 const HINT_TOKEN = 'hint-token';
 const HINT_TOKEN_QS = '[data-test="' + HINT_TOKEN + '"]';
+const GAP_FILL_UNDERSCORE_QS = '._2Iqyl';
 
 // used page types
 const FORM = 'challenge-form';
@@ -113,6 +116,7 @@ const SPEAK = 'challenge-speak';
 const LISTEN_TAP = 'challenge-listenTap';
 const LISTEN = 'challenge-listen';
 const TAP_CLOZE_TABLE = 'challenge-tapClozeTable';
+const MATCH = 'challenge-match';
 
 // allowed challenge types
 const ALLOW_LISTEN_BUTTON = [FORM, TRANSLATE, DIALOGUE, GAP_FILL, COMPLETE_REVERSE_TRANSLATION, TAP_COMPLETE, LISTEN_COMPREHENSION, READ_COMPREHENSION, NAME, SPEAK, LISTEN_TAP, LISTEN, TAP_CLOZE_TABLE];
@@ -240,7 +244,8 @@ function readConfig () {
   configChallenge(SPEAK, 'cs', true, null, null);
   configChallenge(TAP_CLOZE_TABLE, 'ctct', false, null, true);
   configChallenge(TAP_COMPLETE, 'ctc', true, false, true);
-  configChallenge(TRANSLATE, 'ct', true, null, null);
+  configChallenge(TRANSLATE, 'ct', true, true, null);
+  configChallenge(MATCH, 'cm', null, true, null);
 
   // auto/click/autointro default: true/false, if not used: nquull
   function configChallenge (_challengeName, shortName, auto, click, autointro) {
@@ -300,7 +305,7 @@ function addConfig () {
         `;
     // autoplay, play options, read intro
     const configListenComprehension = createConfigOption(LISTEN_COMPREHENSION, 'clc', false, true, false);
-    const configTranslate = createConfigOption(TRANSLATE, 'ct', true, false, false);
+    const configTranslate = createConfigOption(TRANSLATE, 'ct', true, true, false);
     const configGapFill = createConfigOption(GAP_FILL, 'cgf', true, true, true);
     const configTapComplete = createConfigOption(TAP_COMPLETE, 'ctc', true, true, true);
     const configForm = createConfigOption(FORM, 'cf', true, true, true);
@@ -311,6 +316,8 @@ function addConfig () {
     const configReadComprehension = createConfigOption(READ_COMPREHENSION, 'crc', true, true, true);
     const configListen = createConfigOption(LISTEN, 'cl', true, false, false);
     const configTapClozeTable = createConfigOption(TAP_CLOZE_TABLE, 'ctct', true, false, true);
+    const configMatch = createConfigOption(MATCH, 'cm', false, true, false);
+
     configDiv.innerHTML = `
     <div class="_3uS_y eIZ_c" data-test="config-popout" style="--margin:20px;">
       <div class="_2O14B _2XlFZ _1v2Gj WCcVn" style="z-index: 1;">
@@ -338,6 +345,7 @@ function addConfig () {
           ${configListen}
           ${configListenComprehension}
           ${configListenTap}
+          ${configMatch}
           ${configName}
           ${configReadComprehension}
           ${configSpeak}
@@ -368,17 +376,19 @@ function addConfig () {
     });
   }
   if (document.querySelector('#hearEverythingGear') && document.querySelector('[role="progressbar"]')) {
-    highlightConfig([LISTEN_COMPREHENSION, TRANSLATE, GAP_FILL, TAP_COMPLETE, FORM, DIALOGUE, NAME, SPEAK, LISTEN_TAP, READ_COMPREHENSION, LISTEN, TAP_CLOZE_TABLE]);
+    highlightConfig([DIALOGUE, FORM, GAP_FILL, LISTEN, LISTEN_COMPREHENSION, LISTEN_TAP, MATCH, NAME, READ_COMPREHENSION, SPEAK, TAP_CLOZE_TABLE, TAP_COMPLETE, TRANSLATE]);
   }
 
   // builds a configBlock
   // auto = autoplay, click = read options, intro = read intro
   function createConfigOption (challengeName, prefix, auto, click, intro) {
-    let name = challengeName.split('-');
-    for (let i = 0; i < name.length; i++) {
-      name[i] = name[i][0].toUpperCase() + name[i].substr(1);
+    const nameArr = challengeName.split('-');
+    const name1Arr = nameArr[1].match(/[a-z]+|[A-Z][a-z]+/g);
+    nameArr[1] = name1Arr.join(' ');
+    for (let i = 0; i < nameArr.length; i++) {
+      nameArr[i] = nameArr[i][0].toUpperCase() + nameArr[i].substr(1);
     }
-    name = name.join(' ');
+    const name = nameArr.join(' ');
 
     const styleCheckbox = 'style="vertical-align: bottom;"';
     let clickSpan = '';
@@ -455,6 +465,7 @@ function start () {
     if (page.challenge === LISTEN_COMPREHENSION) setupListenComprehension();
     if (page.challenge === NAME) setupName();
     if (page.challenge === SPEAK) setupSpeak();
+    if (page.challenge === MATCH) setupMatch();
   }
 
   function resetPageAtVisibleAnswer () {
@@ -509,14 +520,14 @@ function setupReadComprehension () {
   }
 
   function prepareChallengeReadComprehension () {
-    const speaker1 = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
+    const speaker1 = document.querySelector(HINT_TOKEN_QS).parentNode.innerText.replaceAll(' ?', '?').replaceAll(' .', '.').replaceAll(' !', '!').replaceAll(' ,', ',');
     let speaker2;
     if (page.isWrongAnswer) {
       speaker2 = document.querySelector(ANSWER_CLASS).innerText;
     } else {
       speaker2 = document.querySelector(RIGHT_OPTION_QS).innerText;
     }
-    return speaker1 + '\n' + document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('...', ' ') + speaker2;
+    return speaker1 + '\n' + document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('...', '').replace(' ?', '?') + ' ' + speaker2;
   }
 
   function introChallengeReadComprehension () {
@@ -538,6 +549,9 @@ function setupTranslate () {
   // complete reverse translation uses the same config as translation, because it looks the same for the user
   if (page.challenge === COMPLETE_REVERSE_TRANSLATION) configValue = config.he_ct_auto;
   if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTranslate(), configValue);
+  if (!page.isOptionSpeechAdded && config.he_ct_click && !page.hasSpeakerButton && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
+    addSpeech(CHALLENGE_TAP_TOKEN_QS, '', true);
+  }
 
   function prepareChallengeTranslate () {
     let read;
@@ -586,6 +600,12 @@ function setupListenTap () {
         return read.replace(/\n/g, ' ').replace(/' /g, "'");
       }
     }
+  }
+}
+
+function setupMatch () {
+  if (!page.isOptionSpeechAdded && config.he_cm_click && document.querySelectorAll(CHALLENGE_TAP_TOKEN_TEXT_QS).length !== 0) {
+    addSpeech(CHALLENGE_TAP_TOKEN_TEXT_QS, '', true);
   }
 }
 
@@ -669,22 +689,32 @@ function setupGapFill () {
       debug('answer 2 = ' + answers[1]);
       const reads = read.split('\n');
       debug('reads = ' + reads);
+
       if (reads.length === 2) {
         read = answers[0] + reads[0] + answers[1] + reads[1];
       } else {
         read = reads[0] + answers[0] + reads[1] + answers[1] + reads[2];
       }
+      const underscores = document.querySelectorAll(GAP_FILL_UNDERSCORE_QS);
+      underscores.forEach(function (underscore, index) {
+        underscore.innerHTML = hintTokenSpan(answers[index]);
+      });
     } else {
       // if the answer is at the start of the sentence, there's no \n
       if (read.includes('\n')) {
         read = read.replace('\n', answer);
       } else {
-        read = answer + read;
+        read = answer + ' ' + read;
       }
+      document.querySelector(GAP_FILL_UNDERSCORE_QS).innerHTML = hintTokenSpan(answer);
     }
-    document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerHTML = `<span>${read}</span>`;
+
     return read;
   }
+}
+
+function hintTokenSpan (text) {
+  return `<span><div style="--offset:13px;">${text}</div></span>\n`;
 }
 
 function introChallengeGapFill () {
@@ -710,6 +740,7 @@ function setupForm () {
     let answer;
     if (page.isRightAnswer) {
       answer = document.querySelector(RIGHT_OPTION_QS).innerText;
+      document.querySelector(GAP_FILL_UNDERSCORE_QS).innerHTML = hintTokenSpan(answer);
     }
     if (page.isWrongAnswer) {
       const answerElement = document.querySelector(ANSWER_CLASS);
@@ -720,7 +751,7 @@ function setupForm () {
       }
     }
     const read = document.querySelector(FORM_PROMPT_QS).getAttribute('data-prompt').replace(/_+/, answer);
-    document.querySelector(FORM_PROMPT_QS).innerHTML = `<span>${read}</span>`;
+    if (page.isWrongAnswer) document.querySelector(FORM_PROMPT_QS).innerHTML = `<span>${read}</span>`;
     return read;
   }
 
@@ -814,15 +845,18 @@ function addSpeech (qs, t = '', overrideDuo = false) {
   if (t !== '') t += ' ';
   const options = document.querySelectorAll(qs);
   debug('add speech to options');
-  for (const option of options) {
-    const utter = generateUtter(t + option.innerText);
-    option.parentNode.addEventListener('click', function () {
-      if (overrideDuo) page.isReadingOptions = true;
-      debug('Option read = ' + t + option.innerText);
-      synth.cancel();
-      synth.speak(utter);
-    });
-  }
+  // for (const option in options) {
+  options.forEach(function (option, index) {
+    if ((page.challenge !== MATCH) || (page.challenge === MATCH && index > 4)) {
+      const utter = generateUtter(t + option.innerText);
+      option.parentNode.addEventListener('click', function () {
+        if (overrideDuo) page.isReadingOptions = true;
+        debug('Option read = ' + t + option.innerText);
+        synth.cancel();
+        synth.speak(utter);
+      });
+    }
+  });
   page.isOptionSpeechAdded = true;
 }
 

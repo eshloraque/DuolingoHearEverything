@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.65
+
+### added
+
+- challenge match overrides cartoon character on tap
+- challenge translate overrides cartoon character on tap
+
+### changed
+
+- challenge gap fill replaces only ____
+- challenge form replaces only ____
+- challenge read comprehension discards blanking
+- challenge read comprehension adds space in front of answer
+- config dialogue has spaces in challenge names
+
 ## 0.64.2
 
 ### changed
