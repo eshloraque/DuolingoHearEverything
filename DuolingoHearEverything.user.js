@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Duolingo HearEverything
 // @namespace    http://tampermonkey.net/
-// @version      0.65
+// @version      0.66
 // @description  Reads aloud most sentences in Duo's challenges.
 // @author       Esh
 // @match        https://*.duolingo.com/*
@@ -10,7 +10,7 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-const VERSION = '0.65 --- 1 ---';
+const VERSION = '0.66 --- 1 ---';
 
 const LOG_STRING = 'Duolingo HearEverything: ';
 let voiceSelect;
@@ -69,38 +69,39 @@ const DIALOGUE_SPEAKER_CLASS = '_29e-M _39MJv _2Hg6H';
 // currently used
 const ANSWER_CLASS = '._1UqAr';
 const ANSWER = 'blame';
-const ANSWER_QS = '[data-test~="' + ANSWER + '"]';
+const ANSWER_QS = dataTestContains(ANSWER);
 const RIGHT_ANSWER = 'blame-correct';
-const RIGHT_ANSWER_QS = '[data-test~="' + RIGHT_ANSWER + '"]';
-const RIGHT_ANSWER_TYPO_QS = '[data-test~="' + RIGHT_ANSWER + '"] ._3gI0Y';
+const RIGHT_ANSWER_QS = dataTestContains(RIGHT_ANSWER);
+const RIGHT_ANSWER_TYPO_QS = RIGHT_ANSWER_QS + ' .kVhsm';
 const WRONG_ANSWER = 'blame-incorrect';
-const WRONG_ANSWER_QS = '[data-test~="' + WRONG_ANSWER + '"]';
+const WRONG_ANSWER_QS = dataTestContains(WRONG_ANSWER);
 const CHALLENGE_TAP_TOKEN = 'challenge-tap-token'; // challenge-translate (tap)
-const CHALLENGE_TAP_TOKEN_QS = '[data-test="' + CHALLENGE_TAP_TOKEN + '"]';
+const CHALLENGE_TAP_TOKEN_QS = dataTestIs(CHALLENGE_TAP_TOKEN);
 const CHALLENGE_TAP_TOKEN_TEXT = 'challenge-tap-token-text';
-const CHALLENGE_TAP_TOKEN_TEXT_QS = '[data-test="' + CHALLENGE_TAP_TOKEN_TEXT + '"]';
+const CHALLENGE_TAP_TOKEN_TEXT_QS = dataTestIs(CHALLENGE_TAP_TOKEN_TEXT);
 const WORD_BANK = 'word-bank'; // if exists it's tap instead of keyboard (challenge-translate)
-const WORD_BANK_QS = '[data-test="' + WORD_BANK + '"]';
+const WORD_BANK_QS = dataTestIs(WORD_BANK);
 const TRANSLATE_INPUT = 'challenge-translate-input';
-const TRANSLATE_INPUT_QS = '[data-test="' + TRANSLATE_INPUT + '"]';
+const TRANSLATE_INPUT_QS = dataTestIs(TRANSLATE_INPUT);
 const SPEAKER_BUTTON = '._1KXUd._1I13x._2kfEr._1nlVc._2fOC9.UCrz7.t5wFJ';
 const SPEAKER_BUTTON_QS = SPEAKER_BUTTON;
 const HINT_SENTENCE = '._29e-M._39MJv._2Hg6H';
 const HINT_SENTENCE_QS = HINT_SENTENCE;
-const CHALLENGE_JUDGE = 'challenge-judge-text';
-const CHALLENGE_JUDGE_QS = '[data-test="' + CHALLENGE_JUDGE + '"]';
+const CHALLENGE_JUDGE_TEXT = 'challenge-judge-text';
+const CHALLENGE_JUDGE_TEXT_QS = dataTestIs(CHALLENGE_JUDGE_TEXT);
 const CHALLENGE_JUDGE_INTRO = 'hint-token';
-const CHALLENGE_JUDGE_INTRO_QS = '[data-test="' + CHALLENGE_JUDGE_INTRO + '"]';
+const CHALLENGE_JUDGE_INTRO_QS = dataTestIs(CHALLENGE_JUDGE_INTRO);
 const FORM_PROMPT = '._2SfAl._2Hg6H';
 const FORM_PROMPT_QS = FORM_PROMPT;
 const RIGHT_OPTION_QS = '[aria-checked="true"] div';
 const TEXT_INPUT = 'challenge-text-input';
-const TEXT_INPUT_QS = '[data-test="' + TEXT_INPUT + '"]';
+const TEXT_INPUT_QS = dataTestIs(TEXT_INPUT);
 const SPEAK_INTRO = 'speakIntro';
 const SPEAK_INTRO_QS = '#' + SPEAK_INTRO;
 const HINT_TOKEN = 'hint-token';
-const HINT_TOKEN_QS = '[data-test="' + HINT_TOKEN + '"]';
+const HINT_TOKEN_QS = dataTestIs(HINT_TOKEN);
 const GAP_FILL_UNDERSCORE_QS = '._2Iqyl';
+const TIP_TEXT_QS = '._1WCLL';
 
 // used page types
 const FORM = 'challenge-form';
@@ -117,17 +118,27 @@ const LISTEN_TAP = 'challenge-listenTap';
 const LISTEN = 'challenge-listen';
 const TAP_CLOZE_TABLE = 'challenge-tapClozeTable';
 const MATCH = 'challenge-match';
+const TIP = 'tip';
 
-// allowed challenge types
-const ALLOW_LISTEN_BUTTON = [FORM, TRANSLATE, DIALOGUE, GAP_FILL, COMPLETE_REVERSE_TRANSLATION, TAP_COMPLETE, LISTEN_COMPREHENSION, READ_COMPREHENSION, NAME, SPEAK, LISTEN_TAP, LISTEN, TAP_CLOZE_TABLE];
-// challenges where duo has to read
-// const NO_MUTE = [LISTEN, SELECT_TRANSCRIPTION, GAP_FILL, LISTEN_TAP, LISTEN_COMPREHENSION];
-// let buttonDisabled = true;
-
+// Print nice debug statements
 function debug (s) {
-  console.debug(LOG_STRING + s);
+  const name = (debug.caller !== null) ? debug.caller.name : '';
+  if (typeof (s) === 'object') {
+    console.debug(LOG_STRING + ' ' + name + '(): ');
+    console.debug(s);
+  } else {
+    console.debug(LOG_STRING + ' ' + name + '(): ' + s);
+  }
 }
 
+function dataTestContains (token) {
+  const result = '[data-test~="' + token + '"]';
+  return result;
+}
+
+function dataTestIs (token) {
+  return '[data-test="' + token + '"]';
+}
 // needed for Duo Mute
 // intercept xmlhttprequest to get session json and extract challenges
 (function (open) {
@@ -135,6 +146,7 @@ function debug (s) {
     this.addEventListener('readystatechange', function () {
       if (this.readyState === 4 && this.responseURL.includes('sessions')) {
         if (this.response.challenges) {
+          debug(this.response.challenges);
           this.response.challenges.forEach((rspChallenge) => {
             if (typeof rspChallenge.tts !== 'undefined') {
               challengesUrls.push(rspChallenge.tts);
@@ -179,7 +191,7 @@ function debug (s) {
       debug('Shhh Duo! I am reading the options');
     }
   };
-// eslint-disable-next-line no-undef
+  // eslint-disable-next-line no-undef
 })(Howl.prototype.play);
 
 window.onload = function () {
@@ -246,8 +258,9 @@ function readConfig () {
   configChallenge(TAP_COMPLETE, 'ctc', true, false, true);
   configChallenge(TRANSLATE, 'ct', true, true, null);
   configChallenge(MATCH, 'cm', null, true, null);
+  configChallenge(TIP, 't', false, false, false);
 
-  // auto/click/autointro default: true/false, if not used: nquull
+  // auto/click/autointro default: true/false, if not used: null
   function configChallenge (_challengeName, shortName, auto, click, autointro) {
     const keyAuto = 'he_' + shortName + '_auto';
     const keyClick = 'he_' + shortName + '_click';
@@ -317,6 +330,7 @@ function addConfig () {
     const configListen = createConfigOption(LISTEN, 'cl', true, false, false);
     const configTapClozeTable = createConfigOption(TAP_CLOZE_TABLE, 'ctct', true, false, true);
     const configMatch = createConfigOption(MATCH, 'cm', false, true, false);
+    const configTip = createConfigOption(TIP, 't', true, true, true);
 
     configDiv.innerHTML = `
     <div class="_3uS_y eIZ_c" data-test="config-popout" style="--margin:20px;">
@@ -352,6 +366,7 @@ function addConfig () {
           ${configTapClozeTable}        
           ${configTapComplete}
           ${configTranslate}
+          ${configTip}
           ${configMute}
         </div>
       </div>
@@ -383,6 +398,9 @@ function addConfig () {
   // auto = autoplay, click = read options, intro = read intro
   function createConfigOption (challengeName, prefix, auto, click, intro) {
     const nameArr = challengeName.split('-');
+    if (nameArr.length === 1) {
+      nameArr[1] = nameArr[0];
+    }
     const name1Arr = nameArr[1].match(/[a-z]+|[A-Z][a-z]+/g);
     nameArr[1] = name1Arr.join(' ');
     for (let i = 0; i < nameArr.length; i++) {
@@ -429,7 +447,7 @@ function addConfig () {
 
 // start whenever the mutation observer wants you to start
 function start () {
-  if (window.location.pathname.includes('/skill') && document.querySelector('[data-test="challenge-header"]')) {
+  if ((window.location.pathname.includes('/skill')) && (document.querySelector('[data-test="challenge-header"]') !== null || document.querySelector(CHALLENGE_JUDGE_TEXT) !== null)) {
     checkNewPage();
     if (page.challenge) {
       addConfig();
@@ -454,18 +472,19 @@ function start () {
   }
 
   function setupAllChallenges () {
-    if (page.challenge === TAP_CLOZE_TABLE) setupTapClozeTable();
-    if (page.challenge === READ_COMPREHENSION) setupReadComprehension();
-    if (page.challenge === (TRANSLATE || LISTEN || COMPLETE_REVERSE_TRANSLATION)) setupTranslate();
-    if (page.challenge === LISTEN_TAP) setupListenTap();
-    if (page.challenge === TAP_COMPLETE) setupTapComplete();
     if (page.challenge === DIALOGUE) setupDialogue();
-    if (page.challenge === GAP_FILL) setupGapFill();
     if (page.challenge === FORM) setupForm();
-    if (page.challenge === LISTEN_COMPREHENSION) setupListenComprehension();
-    if (page.challenge === NAME) setupName();
-    if (page.challenge === SPEAK) setupSpeak();
+    if (page.challenge === GAP_FILL) setupGapFill();
     if (page.challenge === MATCH) setupMatch();
+    if (page.challenge === NAME) setupName();
+    if (page.challenge === LISTEN_COMPREHENSION) setupListenComprehension();
+    if (page.challenge === LISTEN_TAP) setupListenTap();
+    if (page.challenge === READ_COMPREHENSION) setupReadComprehension();
+    if (page.challenge === SPEAK) setupSpeak();
+    if (page.challenge === TAP_CLOZE_TABLE) setupTapClozeTable();
+    if (page.challenge === TAP_COMPLETE) setupTapComplete();
+    if (page.challenge === (TRANSLATE || LISTEN || COMPLETE_REVERSE_TRANSLATION)) setupTranslate();
+    if (!page.challenge && document.querySelector(CHALLENGE_JUDGE_TEXT)) setupTip();
   }
 
   function resetPageAtVisibleAnswer () {
@@ -480,159 +499,11 @@ function start () {
   }
 }
 
-function setupTapClozeTable () {
-  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeTapClozeTable(), config.he_ctct_autointro);
-  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTapClozeTable(), config.he_ctct_auto);
-
-  function introChallengeTapClozeTable () {
-    const speaker = document.createElement('div');
-    speaker.innerHTML = speakerButton;
-    speaker.children[0].id = SPEAK_INTRO;
-    speaker.children[0].style = 'width:40px; height:40px; background:transparent; padding-bottom:15px; margin-bottom:-10px; margin-right:0px;';
-    document.querySelectorAll(HINT_TOKEN_QS)[1].insertAdjacentElement('beforeBegin', speaker);
-    return document.querySelectorAll(HINT_TOKEN_QS)[1].innerText;
-  }
-
-  function prepareChallengeTapClozeTable () {
-    if (page.isRightAnswer) {
-      // it reads kind of 'vous\t\ns\navez' and should be 'vous savez'
-      let read = document.querySelectorAll(HINT_TOKEN_QS)[2].parentNode.parentNode.parentNode.innerText.replace('\t\n', ' ').replace('\n', '');
-      read += '\n' + document.querySelectorAll(HINT_TOKEN_QS)[3].parentNode.parentNode.parentNode.innerText.replace('\t\n', ' ').replace('\n', '');
-      return read;
-    }
-    if (page.isWrongAnswer) {
-      const answer = document.querySelector(ANSWER_CLASS);
-      if (answer.lastElementChild) {
-        return answer.lastElementChild.innerText;
-      } else {
-        return answer.innerText;
-      }
-    }
-  }
-}
-
-function setupReadComprehension () {
-  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeReadComprehension(), config.he_crc_autointro);
-  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeReadComprehension(), config.he_crc_auto);
-  if (!page.isOptionSpeechAdded && config.he_crc_click && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0) {
-    const hint = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('…', '').replace('...', '');
-    addSpeech(CHALLENGE_JUDGE_QS, hint);
-  }
-
-  function prepareChallengeReadComprehension () {
-    const speaker1 = document.querySelector(HINT_TOKEN_QS).parentNode.innerText.replaceAll(' ?', '?').replaceAll(' .', '.').replaceAll(' !', '!').replaceAll(' ,', ',');
-    let speaker2;
-    if (page.isWrongAnswer) {
-      speaker2 = document.querySelector(ANSWER_CLASS).innerText;
-    } else {
-      speaker2 = document.querySelector(RIGHT_OPTION_QS).innerText;
-    }
-    return speaker1 + '\n' + document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('...', '').replace(' ?', '?') + ' ' + speaker2;
-  }
-
-  function introChallengeReadComprehension () {
-    if (document.querySelector(HINT_TOKEN_QS)) {
-      const read = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
-      const speaker = document.createElement('div');
-      speaker.innerHTML = speakerButton;
-      speaker.children[0].id = SPEAK_INTRO;
-      speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-7px; margin-bottom:-10px; margin-right:0px;';
-      document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.insertAdjacentElement('beforeBegin', speaker);
-      return read;
-    }
-  }
-}
-
-function setupTranslate () {
-  let configValue = config.he_ct_auto;
-  if (page.challenge === LISTEN) configValue = config.he_cl_auto;
-  // complete reverse translation uses the same config as translation, because it looks the same for the user
-  if (page.challenge === COMPLETE_REVERSE_TRANSLATION) configValue = config.he_ct_auto;
-  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTranslate(), configValue);
-  if (!page.isOptionSpeechAdded && config.he_ct_click && !page.hasSpeakerButton && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
-    addSpeech(CHALLENGE_TAP_TOKEN_QS, '', true);
-  }
-
-  function prepareChallengeTranslate () {
-    let read;
-    if (page.isRightAnswer) {
-      if (document.querySelector(WORD_BANK_QS)) {
-        read = document.querySelector(CHALLENGE_TAP_TOKEN_QS).parentNode.parentNode.innerText.replace(/\n/g, ' ');
-        read = read.replace(/' /g, "'");
-      } else {
-        const tI = document.querySelector(TRANSLATE_INPUT_QS);
-        if (tI.lang === config.lang) read = tI.innerHTML;
-      }
-    }
-    if (page.isWrongAnswer || page.isRightAnswerTypo) {
-      const answer = document.querySelector(ANSWER_CLASS);
-      if (answer.lastElementChild) {
-        read = answer.lastElementChild.innerText;
-      } else {
-        read = answer.innerText;
-      }
-    }
-    if (page.hasSpeakerButton) {
-      read = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
-    }
-    return read;
-  }
-}
-
-function setupListenTap () {
-  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeListenTap(), config.he_clt_auto);
-  if (!page.isOptionSpeechAdded && config.he_clt_click && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
-    addSpeech(CHALLENGE_TAP_TOKEN_QS, '', true);
-  }
-
-  function prepareChallengeListenTap () {
-    if (page.isWrongAnswer) {
-      const answer = document.querySelector(ANSWER_CLASS);
-      if (answer.lastElementChild) {
-        return answer.lastElementChild.innerText;
-      } else {
-        return answer.innerText;
-      }
-    }
-    if (page.isRightAnswer) {
-      if (document.querySelector(CHALLENGE_TAP_TOKEN_QS)) {
-        const read = document.querySelector(CHALLENGE_TAP_TOKEN_QS).parentNode.parentNode.innerText;
-        return read.replace(/\n/g, ' ').replace(/' /g, "'");
-      }
-    }
-  }
-}
-
-function setupMatch () {
-  if (!page.isOptionSpeechAdded && config.he_cm_click && document.querySelectorAll(CHALLENGE_TAP_TOKEN_TEXT_QS).length !== 0) {
-    addSpeech(CHALLENGE_TAP_TOKEN_TEXT_QS, '', true);
-  }
-}
-
-function setupTapComplete () {
-  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeGapFill(), config.he_ctc_autointro);
-  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTapComplete(), config.he_ctc_auto);
-  if (page.isOptionSpeechAdded === false && config.he_ctc_click && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
-    addSpeech(CHALLENGE_TAP_TOKEN_QS);
-  }
-
-  function prepareChallengeTapComplete () {
-    let read;
-    if (page.isRightAnswer) {
-      read = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerText.replace(/\n/g, '');
-    }
-    if (page.isWrongAnswer) {
-      read = document.querySelector(ANSWER_CLASS).innerText;
-    }
-    return read;
-  }
-}
-
 function setupDialogue () {
   if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeDialogue(), config.he_cd_autointro);
   if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeDialogue(), config.he_cd_auto);
   if (!page.isOptionSpeechAdded && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0 && config.he_cd_click) {
-    addSpeech(CHALLENGE_JUDGE_QS);
+    addSpeech(CHALLENGE_JUDGE_TEXT_QS);
   }
 
   function prepareChallengeDialogue () {
@@ -660,11 +531,50 @@ function setupDialogue () {
   }
 }
 
+function setupForm () {
+  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeForm(), config.he_cf_autointro);
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeForm(), config.he_cf_auto);
+  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_TEXT_QS).length !== 0 && config.he_cf_click === true) {
+    addSpeech(CHALLENGE_JUDGE_TEXT_QS);
+  }
+
+  function prepareChallengeForm () {
+    let answer;
+    if (page.isRightAnswer) {
+      answer = document.querySelector(RIGHT_OPTION_QS).innerText;
+      document.querySelector(GAP_FILL_UNDERSCORE_QS).innerHTML = hintTokenSpan(answer);
+    }
+    if (page.isWrongAnswer) {
+      const answerElement = document.querySelector(ANSWER_CLASS);
+      if (answerElement.lastElementChild) {
+        answer = answerElement.lastElementChild.innerText;
+      } else {
+        answer = answerElement.innerText;
+      }
+    }
+    const read = document.querySelector(FORM_PROMPT_QS).getAttribute('data-prompt').replace(/_+/, answer);
+    if (page.isWrongAnswer) document.querySelector(FORM_PROMPT_QS).innerHTML = `<span>${read}</span>`;
+    return read;
+  }
+
+  function introChallengeForm () {
+    if (document.querySelector(FORM_PROMPT_QS)) {
+      const read = document.querySelector(FORM_PROMPT_QS).getAttribute('data-prompt').replace(/_+/, '\n');
+      const speaker = document.createElement('div');
+      speaker.innerHTML = speakerButton;
+      speaker.children[0].id = SPEAK_INTRO;
+      speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-16px; margin-right:0px; padding-bottom:5px';
+      document.querySelector(FORM_PROMPT_QS).insertAdjacentElement('afterBegin', speaker);
+      return read;
+    }
+  }
+}
+
 function setupGapFill () {
   if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeGapFill(), config.he_cgf_autointro);
   if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeGapFill(), config.he_cgf_auto);
-  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0 && config.he_cgf_click === true) {
-    addSpeech(CHALLENGE_JUDGE_QS);
+  if (!page.isOptionSpeechAdded && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0 && config.he_cgf_click === true) {
+    addSpeech(CHALLENGE_JUDGE_TEXT_QS);
   }
 
   function prepareChallengeGapFill () {
@@ -713,65 +623,40 @@ function setupGapFill () {
   }
 }
 
-function hintTokenSpan (text) {
-  return `<span><div style="--offset:13px;">${text}</div></span>\n`;
-}
-
-function introChallengeGapFill () {
-  if (document.querySelector(HINT_TOKEN_QS)) {
-    const read = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerText;
-    const speaker = document.createElement('div');
-    speaker.innerHTML = speakerButton;
-    speaker.children[0].id = SPEAK_INTRO;
-    speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-16px; margin-right:0px; padding-bottom:5px';
-    document.querySelector(HINT_TOKEN_QS).insertAdjacentElement('beforeBegin', speaker);
-    return read;
-  }
-}
-
-function setupForm () {
-  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeForm(), config.he_cf_autointro);
-  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeForm(), config.he_cf_auto);
-  if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_QS).length !== 0 && config.he_cf_click === true) {
-    addSpeech(CHALLENGE_JUDGE_QS);
-  }
-
-  function prepareChallengeForm () {
-    let answer;
-    if (page.isRightAnswer) {
-      answer = document.querySelector(RIGHT_OPTION_QS).innerText;
-      document.querySelector(GAP_FILL_UNDERSCORE_QS).innerHTML = hintTokenSpan(answer);
-    }
-    if (page.isWrongAnswer) {
-      const answerElement = document.querySelector(ANSWER_CLASS);
-      if (answerElement.lastElementChild) {
-        answer = answerElement.lastElementChild.innerText;
-      } else {
-        answer = answerElement.innerText;
-      }
-    }
-    const read = document.querySelector(FORM_PROMPT_QS).getAttribute('data-prompt').replace(/_+/, answer);
-    if (page.isWrongAnswer) document.querySelector(FORM_PROMPT_QS).innerHTML = `<span>${read}</span>`;
-    return read;
-  }
-
-  function introChallengeForm () {
-    if (document.querySelector(FORM_PROMPT_QS)) {
-      const read = document.querySelector(FORM_PROMPT_QS).getAttribute('data-prompt').replace(/_+/, '\n');
-      const speaker = document.createElement('div');
-      speaker.innerHTML = speakerButton;
-      speaker.children[0].id = SPEAK_INTRO;
-      speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-16px; margin-right:0px; padding-bottom:5px';
-      document.querySelector(FORM_PROMPT_QS).insertAdjacentElement('afterBegin', speaker);
-      return read;
-    }
-  }
-}
-
 function setupListenComprehension () {
   if (page.isOptionSpeechAdded === false && document.querySelectorAll(CHALLENGE_JUDGE_INTRO_QS).length !== 0 && config.he_clc_click === true) {
     const hint = document.querySelector(HINT_TOKEN_QS).parentNode.innerText.replace('…', '').replace('...', '');
-    addSpeech(CHALLENGE_JUDGE_QS, hint);
+    addSpeech(CHALLENGE_JUDGE_TEXT_QS, hint);
+  }
+}
+
+function setupListenTap () {
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeListenTap(), config.he_clt_auto);
+  if (!page.isOptionSpeechAdded && config.he_clt_click && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
+    addSpeech(CHALLENGE_TAP_TOKEN_QS, '', true);
+  }
+
+  function prepareChallengeListenTap () {
+    if (page.isWrongAnswer) {
+      const answer = document.querySelector(ANSWER_CLASS);
+      if (answer.lastElementChild) {
+        return answer.lastElementChild.innerText;
+      } else {
+        return answer.innerText;
+      }
+    }
+    if (page.isRightAnswer) {
+      if (document.querySelector(CHALLENGE_TAP_TOKEN_QS)) {
+        const read = document.querySelector(CHALLENGE_TAP_TOKEN_QS).parentNode.parentNode.innerText;
+        return read.replace(/\n/g, ' ').replace(/' /g, "'");
+      }
+    }
+  }
+}
+
+function setupMatch () {
+  if (!page.isOptionSpeechAdded && config.he_cm_click && document.querySelectorAll(CHALLENGE_TAP_TOKEN_TEXT_QS).length !== 0) {
+    addSpeech(CHALLENGE_TAP_TOKEN_TEXT_QS, '', true);
   }
 }
 
@@ -790,6 +675,38 @@ function setupName () {
   }
 }
 
+function setupReadComprehension () {
+  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeReadComprehension(), config.he_crc_autointro);
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeReadComprehension(), config.he_crc_auto);
+  if (!page.isOptionSpeechAdded && config.he_crc_click && document.querySelectorAll(CHALLENGE_JUDGE_TEXT_QS).length !== 0) {
+    const hint = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('…', '').replace('...', '');
+    addSpeech(CHALLENGE_JUDGE_TEXT_QS, hint);
+  }
+
+  function prepareChallengeReadComprehension () {
+    const speaker1 = document.querySelector(HINT_TOKEN_QS).parentNode.innerText.replaceAll(' ?', '?').replaceAll(' .', '.').replaceAll(' !', '!').replaceAll(' ,', ',');
+    let speaker2;
+    if (page.isWrongAnswer) {
+      speaker2 = document.querySelector(ANSWER_CLASS).innerText;
+    } else {
+      speaker2 = document.querySelector(RIGHT_OPTION_QS).innerText;
+    }
+    return speaker1 + '\n' + document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.nextSibling.firstChild.innerText.replace('...', '').replace(' ?', '?') + ' ' + speaker2;
+  }
+
+  function introChallengeReadComprehension () {
+    if (document.querySelector(HINT_TOKEN_QS)) {
+      const read = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
+      const speaker = document.createElement('div');
+      speaker.innerHTML = speakerButton;
+      speaker.children[0].id = SPEAK_INTRO;
+      speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-7px; margin-bottom:-10px; margin-right:0px;';
+      document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.insertAdjacentElement('beforeBegin', speaker);
+      return read;
+    }
+  }
+}
+
 function setupSpeak () {
   if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeSpeak(), config.he_cs_auto);
 
@@ -800,14 +717,152 @@ function setupSpeak () {
   }
 }
 
+function setupTapClozeTable () {
+  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeTapClozeTable(), config.he_ctct_autointro);
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTapClozeTable(), config.he_ctct_auto);
+
+  function introChallengeTapClozeTable () {
+    const speaker = document.createElement('div');
+    speaker.innerHTML = speakerButton;
+    speaker.children[0].id = SPEAK_INTRO;
+    speaker.children[0].style = 'width:40px; height:40px; background:transparent; padding-bottom:15px; margin-bottom:-10px; margin-right:0px;';
+    document.querySelectorAll(HINT_TOKEN_QS)[1].insertAdjacentElement('beforeBegin', speaker);
+    return document.querySelectorAll(HINT_TOKEN_QS)[1].innerText;
+  }
+
+  function prepareChallengeTapClozeTable () {
+    if (page.isRightAnswer) {
+      // it reads kind of 'vous\t\ns\navez' and should be 'vous savez'
+      let read = document.querySelectorAll(HINT_TOKEN_QS)[2].parentNode.parentNode.parentNode.innerText.replace('\t\n', ' ').replace('\n', '');
+      read += '\n' + document.querySelectorAll(HINT_TOKEN_QS)[3].parentNode.parentNode.parentNode.innerText.replace('\t\n', ' ').replace('\n', '');
+      return read;
+    }
+    if (page.isWrongAnswer) {
+      const answer = document.querySelector(ANSWER_CLASS);
+      if (answer.lastElementChild) {
+        return answer.lastElementChild.innerText;
+      } else {
+        return answer.innerText;
+      }
+    }
+  }
+}
+
+function setupTapComplete () {
+  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeGapFill(), config.he_ctc_autointro);
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTapComplete(), config.he_ctc_auto);
+  if (page.isOptionSpeechAdded === false && config.he_ctc_click && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
+    addSpeech(CHALLENGE_TAP_TOKEN_QS);
+  }
+
+  function prepareChallengeTapComplete () {
+    let read;
+    if (page.isRightAnswer) {
+      read = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerText.replace(/\n/g, '');
+    }
+    if (page.isWrongAnswer) {
+      read = document.querySelector(ANSWER_CLASS).innerText;
+    }
+    return read;
+  }
+}
+
+function setupTranslate () {
+  let configValue = config.he_ct_auto;
+  if (page.challenge === LISTEN) configValue = config.he_cl_auto;
+  // complete reverse translation uses the same config as translation, because it looks the same for the user
+  if (page.challenge === COMPLETE_REVERSE_TRANSLATION) configValue = config.he_ct_auto;
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTranslate(), configValue);
+  if (!page.isOptionSpeechAdded && config.he_ct_click && !page.hasSpeakerButton && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
+    addSpeech(CHALLENGE_TAP_TOKEN_QS, '', true);
+  }
+
+  function prepareChallengeTranslate () {
+    let read;
+    if (page.isRightAnswer) {
+      if (document.querySelector(WORD_BANK_QS)) {
+        read = document.querySelector(CHALLENGE_TAP_TOKEN_QS).parentNode.parentNode.innerText.replace(/\n/g, ' ');
+        read = read.replace(/' /g, "'");
+      } else {
+        const tI = document.querySelector(TRANSLATE_INPUT_QS);
+        if (tI.lang === config.lang) read = tI.innerHTML;
+      }
+    }
+    if (page.isWrongAnswer || page.isRightAnswerTypo) {
+      const answer = document.querySelector(ANSWER_CLASS);
+      if (answer.lastElementChild) {
+        read = answer.lastElementChild.innerText;
+      } else {
+        read = answer.innerText;
+      }
+    }
+    if (page.hasSpeakerButton) {
+      read = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
+    }
+    return read;
+  }
+}
+
+function hintTokenSpan (text) {
+  return `<span><div style="--offset:13px;">${text}</div></span>\n`;
+}
+
+function introChallengeGapFill () {
+  if (document.querySelector(HINT_TOKEN_QS)) {
+    const read = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerText;
+    const speaker = document.createElement('div');
+    speaker.innerHTML = speakerButton;
+    speaker.children[0].id = SPEAK_INTRO;
+    speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-16px; margin-right:0px; padding-bottom:5px';
+    document.querySelector(HINT_TOKEN_QS).insertAdjacentElement('beforeBegin', speaker);
+    return read;
+  }
+}
+
+function setupTip () {
+  if (!page.hasIntroSpeakerButton && config.he_t_autointro) handleIntroReading(introTip(), config.he_t_autointro);
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareTip(), config.he_t_auto);
+  if (page.isOptionSpeechAdded === false && config.he_t_click && document.querySelectorAll(CHALLENGE_JUDGE_TEXT).length !== 0) {
+    addSpeech(CHALLENGE_JUDGE_TEXT);
+  }
+
+  function prepareTip () {
+    const readArr = document.querySelectorAll(TIP_TEXT_QS);
+    readArr[readArr.length - 3].replace('/(&nbsp;)+/', document.querySelector(RIGHT_OPTION_QS));
+    let read = '';
+    readArr.forEach(function (element, key) {
+      if (key !== (0 || 1 || 2)) {
+        read += element.innerText + '\n';
+        if (readArr[readArr.length - 3].contains(document.querySelector(RIGHT_OPTION_QS))) return read;
+      }
+    });
+    return read;
+  }
+
+  function introTip () {
+    const readArr = document.querySelectorAll(TIP_TEXT_QS + ' ._1LQ5F ' + HINT_TOKEN_QS);
+    let read = '';
+    for (const element of readArr) {
+      read += (element.innerText).replace(' ', '') + '\n';
+    }
+    const speaker = document.createElement('div');
+    speaker.innerHTML = speakerButton;
+    speaker.children[0].id = SPEAK_INTRO;
+    speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-16px; margin-right:0px; padding-bottom:5px';
+    document.querySelector(HINT_TOKEN_QS).insertAdjacentElement('beforeBegin', speaker);
+    return read;
+  }
+}
+
 function handleIntroReading (read = '', click = false) {
   if (DEBUG) document.querySelector('#mySentence').innerText = read;
   debug('intro = ' + read);
   const utter = generateUtter(read);
+  const speakIntro = document.querySelector(SPEAK_INTRO_QS);
   addSpeakListener(SPEAK_INTRO, utter, read);
-  if (click) {
+  if (click && speakIntro !== null) {
     debug('click intro speaker button');
-    document.querySelector(SPEAK_INTRO_QS).click();
+    speakIntro.click();
   }
 }
 
@@ -845,7 +900,6 @@ function addSpeech (qs, t = '', overrideDuo = false) {
   if (t !== '') t += ' ';
   const options = document.querySelectorAll(qs);
   debug('add speech to options');
-  // for (const option in options) {
   options.forEach(function (option, index) {
     if ((page.challenge !== MATCH) || (page.challenge === MATCH && index > 4)) {
       const utter = generateUtter(t + option.innerText);
@@ -931,9 +985,10 @@ function buildDebug () {
 function checkNewPage () {
   if (!document.querySelector('#myNewPage')) {
     page.challenge = getChallengeType()[0];
+    // if (!page.challenge) { page.challenge = 'tip'; }
     const nP = document.createElement('div');
     nP.id = 'myNewPage';
-    document.querySelector('[data-test="challenge-header"]').insertAdjacentElement('afterend', nP);
+    document.querySelector('[data-test="challenge-header"]').insertAdjacentElement('beforeend', nP);
     debug('Challenge Type = ' + page.challenge);
     page.isNewPage = true;
     if (howlPlay === false) {
@@ -957,20 +1012,20 @@ function getChallengeType () {
 
 function updateText (t) {
   // don't add a listen button if there is no text t
-  if (t !== '' && ALLOW_LISTEN_BUTTON.includes(getChallengeType()[0])) {
+  if (t !== '') {
     const translateInput = document.querySelector(TRANSLATE_INPUT_QS);
     const div = document.createElement('div');
     div.class = 'np6Tv';
     div.style = 'position: absolute; align-self: flex-end; top: 1.8rem;';
     div.innerHTML = speakerButton;
     // if the answer is displayed
-    if (document.querySelector('._3dRS9._3DKa-._1tuLI')) {
+    if (document.querySelector(ANSWER_QS)) {
       if (translateInput !== null) {
         if (translateInput.lang === config.lang) {
-          document.querySelector('._3dRS9._3DKa-._1tuLI').insertAdjacentElement('afterBegin', div);
+          document.querySelector(ANSWER_QS).parentNode.insertAdjacentElement('afterBegin', div);
         }
       } else {
-        document.querySelector('._3dRS9._3DKa-._1tuLI').insertAdjacentElement('afterBegin', div);
+        document.querySelector(ANSWER_QS).parentNode.insertAdjacentElement('afterBegin', div);
       }
     }
   }

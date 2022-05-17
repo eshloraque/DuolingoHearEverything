@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.66
+
+### added
+
+- read tips (beta)
+
+### changed
+
+- some refactoring
+
 ## 0.65
 
 ### added
