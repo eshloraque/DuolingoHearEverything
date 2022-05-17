@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.67
+
+### added
+
+- challenge tapCloze (autoIntro, autoPlay)
+
 ## 0.66
 
 ### added

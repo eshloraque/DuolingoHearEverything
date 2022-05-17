@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Duolingo HearEverything
 // @namespace    http://tampermonkey.net/
-// @version      0.66
+// @version      0.67
 // @description  Reads aloud most sentences in Duo's challenges.
 // @author       Esh
 // @match        https://*.duolingo.com/*
@@ -10,7 +10,7 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-const VERSION = '0.66 --- 1 ---';
+const VERSION = '0.67 --- 1 ---';
 
 const LOG_STRING = 'Duolingo HearEverything: ';
 let voiceSelect;
@@ -116,6 +116,7 @@ const NAME = 'challenge-name';
 const SPEAK = 'challenge-speak';
 const LISTEN_TAP = 'challenge-listenTap';
 const LISTEN = 'challenge-listen';
+const TAP_CLOZE = 'challenge-tapCloze';
 const TAP_CLOZE_TABLE = 'challenge-tapClozeTable';
 const MATCH = 'challenge-match';
 const TIP = 'tip';
@@ -254,6 +255,7 @@ function readConfig () {
   configChallenge(NAME, 'cn', true, null, null);
   configChallenge(READ_COMPREHENSION, 'crc', true, false, false);
   configChallenge(SPEAK, 'cs', true, null, null);
+  configChallenge(TAP_CLOZE, 'ctcl', true, null, false);
   configChallenge(TAP_CLOZE_TABLE, 'ctct', false, null, true);
   configChallenge(TAP_COMPLETE, 'ctc', true, false, true);
   configChallenge(TRANSLATE, 'ct', true, true, null);
@@ -317,20 +319,22 @@ function addConfig () {
           </div>
         `;
     // autoplay, play options, read intro
-    const configListenComprehension = createConfigOption(LISTEN_COMPREHENSION, 'clc', false, true, false);
-    const configTranslate = createConfigOption(TRANSLATE, 'ct', true, true, false);
-    const configGapFill = createConfigOption(GAP_FILL, 'cgf', true, true, true);
-    const configTapComplete = createConfigOption(TAP_COMPLETE, 'ctc', true, true, true);
-    const configForm = createConfigOption(FORM, 'cf', true, true, true);
     const configDialogue = createConfigOption(DIALOGUE, 'cd', true, true, true);
-    const configName = createConfigOption(NAME, 'cn', true, false, false);
-    const configSpeak = createConfigOption(SPEAK, 'cs', true, false, false);
-    const configListenTap = createConfigOption(LISTEN_TAP, 'clt', true, true, false);
-    const configReadComprehension = createConfigOption(READ_COMPREHENSION, 'crc', true, true, true);
+    const configForm = createConfigOption(FORM, 'cf', true, true, true);
+    const configGapFill = createConfigOption(GAP_FILL, 'cgf', true, true, true);
     const configListen = createConfigOption(LISTEN, 'cl', true, false, false);
-    const configTapClozeTable = createConfigOption(TAP_CLOZE_TABLE, 'ctct', true, false, true);
+    const configListenComprehension = createConfigOption(LISTEN_COMPREHENSION, 'clc', false, true, false);
+    const configListenTap = createConfigOption(LISTEN_TAP, 'clt', true, true, false);
     const configMatch = createConfigOption(MATCH, 'cm', false, true, false);
-    const configTip = createConfigOption(TIP, 't', true, true, true);
+    const configName = createConfigOption(NAME, 'cn', true, false, false);
+    const configReadComprehension = createConfigOption(READ_COMPREHENSION, 'crc', true, true, true);
+    const configSpeak = createConfigOption(SPEAK, 'cs', true, false, false);
+    const configTapCloze = createConfigOption(TAP_CLOZE, 'ctcl', true, false, true);
+    const configTapClozeTable = createConfigOption(TAP_CLOZE_TABLE, 'ctct', true, false, true);
+    const configTapComplete = createConfigOption(TAP_COMPLETE, 'ctc', true, true, true);
+    const configTranslate = createConfigOption(TRANSLATE, 'ct', true, true, false);
+
+    const configTip = createConfigOption(TIP + ' (beta)', 't', true, true, true);
 
     configDiv.innerHTML = `
     <div class="_3uS_y eIZ_c" data-test="config-popout" style="--margin:20px;">
@@ -363,6 +367,7 @@ function addConfig () {
           ${configName}
           ${configReadComprehension}
           ${configSpeak}
+          ${configTapCloze}
           ${configTapClozeTable}        
           ${configTapComplete}
           ${configTranslate}
@@ -481,6 +486,7 @@ function start () {
     if (page.challenge === LISTEN_TAP) setupListenTap();
     if (page.challenge === READ_COMPREHENSION) setupReadComprehension();
     if (page.challenge === SPEAK) setupSpeak();
+    if (page.challenge === TAP_CLOZE) setupTapCloze();
     if (page.challenge === TAP_CLOZE_TABLE) setupTapClozeTable();
     if (page.challenge === TAP_COMPLETE) setupTapComplete();
     if (page.challenge === (TRANSLATE || LISTEN || COMPLETE_REVERSE_TRANSLATION)) setupTranslate();
@@ -713,6 +719,39 @@ function setupSpeak () {
   function prepareChallengeSpeak () {
     if (document.querySelector(HINT_TOKEN_QS)) {
       return document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
+    }
+  }
+}
+
+function setupTapCloze () {
+  if (!page.hasIntroSpeakerButton) handleIntroReading(introChallengeTapCloze(), config.he_ctcl_autointro);
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTapCloze(), config.he_ctcl_auto);
+
+  function introChallengeTapCloze () {
+    const speaker = document.createElement('div');
+    speaker.innerHTML = speakerButton;
+    speaker.children[0].id = SPEAK_INTRO;
+    speaker.children[0].style = 'width:40px; height:40px; background:transparent; padding-bottom:15px; margin-bottom:-10px; margin-right:0px;';
+    document.querySelectorAll(HINT_TOKEN_QS)[0].insertAdjacentElement('beforeBegin', speaker);
+    const hintTokens = document.querySelectorAll(HINT_TOKEN_QS);
+    let intro = '';
+    for (const token of hintTokens) {
+      intro += token.innerText;
+    }
+    return intro;
+  }
+
+  function prepareChallengeTapCloze () {
+    if (page.isRightAnswer) {
+      return document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.innerText.replaceAll('\n', '');
+    }
+    if (page.isWrongAnswer) {
+      const answer = document.querySelector(ANSWER_CLASS);
+      if (answer.lastElementChild) {
+        return answer.lastElementChild.innerText;
+      } else {
+        return answer.innerText;
+      }
     }
   }
 }
