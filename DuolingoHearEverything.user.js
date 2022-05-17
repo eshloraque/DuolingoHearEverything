@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Duolingo HearEverything
 // @namespace    http://tampermonkey.net/
-// @version      0.67
+// @version      0.68
 // @description  Reads aloud most sentences in Duo's challenges.
 // @author       Esh
 // @match        https://*.duolingo.com/*
@@ -10,7 +10,7 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-const VERSION = '0.67 --- 1 ---';
+const VERSION = '0.68 --- 1 ---';
 
 const LOG_STRING = 'Duolingo HearEverything: ';
 let voiceSelect;
@@ -72,7 +72,7 @@ const ANSWER = 'blame';
 const ANSWER_QS = dataTestContains(ANSWER);
 const RIGHT_ANSWER = 'blame-correct';
 const RIGHT_ANSWER_QS = dataTestContains(RIGHT_ANSWER);
-const RIGHT_ANSWER_TYPO_QS = RIGHT_ANSWER_QS + ' .kVhsm';
+const RIGHT_ANSWER_TYPO_QS = '._3gI0Y';
 const WRONG_ANSWER = 'blame-incorrect';
 const WRONG_ANSWER_QS = dataTestContains(WRONG_ANSWER);
 const CHALLENGE_TAP_TOKEN = 'challenge-tap-token'; // challenge-translate (tap)
@@ -140,6 +140,7 @@ function dataTestContains (token) {
 function dataTestIs (token) {
   return '[data-test="' + token + '"]';
 }
+
 // needed for Duo Mute
 // intercept xmlhttprequest to get session json and extract challenges
 (function (open) {
@@ -477,6 +478,7 @@ function start () {
   }
 
   function setupAllChallenges () {
+    if (page.challenge === COMPLETE_REVERSE_TRANSLATION) setupCompleteReverseTranslation();
     if (page.challenge === DIALOGUE) setupDialogue();
     if (page.challenge === FORM) setupForm();
     if (page.challenge === GAP_FILL) setupGapFill();
@@ -489,7 +491,7 @@ function start () {
     if (page.challenge === TAP_CLOZE) setupTapCloze();
     if (page.challenge === TAP_CLOZE_TABLE) setupTapClozeTable();
     if (page.challenge === TAP_COMPLETE) setupTapComplete();
-    if (page.challenge === (TRANSLATE || LISTEN || COMPLETE_REVERSE_TRANSLATION)) setupTranslate();
+    if (page.challenge === (TRANSLATE || LISTEN)) setupTranslate();
     if (!page.challenge && document.querySelector(CHALLENGE_JUDGE_TEXT)) setupTip();
   }
 
@@ -806,11 +808,36 @@ function setupTapComplete () {
   }
 }
 
+function setupCompleteReverseTranslation () {
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeCompleteReverseTranslation(), config.he_ct_auto);
+
+  function prepareChallengeCompleteReverseTranslation () {
+    let read;
+    if (page.isRightAnswer) {
+      const tiParent = document.querySelector(TEXT_INPUT_QS).parentNode;
+      tiParent.innerText = document.querySelector(TEXT_INPUT_QS).value;
+      read = tiParent.parentNode.innerText;
+    }
+    if (page.isWrongAnswer || page.isRightAnswerTypo) {
+      const answer = document.querySelector(ANSWER_CLASS);
+      if (answer.lastElementChild) {
+        read = answer.lastElementChild.innerText;
+      } else {
+        read = answer.innerText;
+      }
+    }
+    if (page.hasSpeakerButton) {
+      read = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
+    }
+    return read;
+  }
+}
+
 function setupTranslate () {
   let configValue = config.he_ct_auto;
   if (page.challenge === LISTEN) configValue = config.he_cl_auto;
   // complete reverse translation uses the same config as translation, because it looks the same for the user
-  if (page.challenge === COMPLETE_REVERSE_TRANSLATION) configValue = config.he_ct_auto;
+  // if (page.challenge === COMPLETE_REVERSE_TRANSLATION) configValue = config.he_ct_auto;
   if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTranslate(), configValue);
   if (!page.isOptionSpeechAdded && config.he_ct_click && !page.hasSpeakerButton && document.querySelectorAll(CHALLENGE_TAP_TOKEN_QS).length !== 0) {
     addSpeech(CHALLENGE_TAP_TOKEN_QS, '', true);
@@ -853,7 +880,7 @@ function introChallengeGapFill () {
     speaker.innerHTML = speakerButton;
     speaker.children[0].id = SPEAK_INTRO;
     speaker.children[0].style = 'width:40px; height:40px; background:transparent; margin-left:-16px; margin-right:0px; padding-bottom:5px';
-    document.querySelector(HINT_TOKEN_QS).insertAdjacentElement('beforeBegin', speaker);
+    document.querySelector(HINT_TOKEN_QS).parentNode.parentNode.insertAdjacentElement('afterBegin', speaker);
     return read;
   }
 }

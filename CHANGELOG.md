@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.68
+
+### added
+
+- challenge completeReverseTranslation
+
+### changed
+
+- challenge gapFill speaker position
+- bugfix read answer with typo
+
 ## 0.67
 
 ### added
