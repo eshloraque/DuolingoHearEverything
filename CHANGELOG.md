@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.69
+
+### added
+
+- challenge typeCloze autoplay
+
+### changed
+
+- options dialog is now more compressed
+- highlight function is easier
+
 ## 0.68
 
 ### added

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Duolingo HearEverything
 // @namespace    http://tampermonkey.net/
-// @version      0.68
+// @version      0.69
 // @description  Reads aloud most sentences in Duo's challenges.
 // @author       Esh
 // @match        https://*.duolingo.com/*
@@ -10,7 +10,7 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-const VERSION = '0.68 --- 1 ---';
+const VERSION = '0.69 --- 1 ---';
 
 const LOG_STRING = 'Duolingo HearEverything: ';
 let voiceSelect;
@@ -104,21 +104,23 @@ const GAP_FILL_UNDERSCORE_QS = '._2Iqyl';
 const TIP_TEXT_QS = '._1WCLL';
 
 // used page types
-const FORM = 'challenge-form';
-const TRANSLATE = 'challenge-translate';
-const DIALOGUE = 'challenge-dialogue';
-const GAP_FILL = 'challenge-gapFill';
 const COMPLETE_REVERSE_TRANSLATION = 'challenge-completeReverseTranslation';
-const TAP_COMPLETE = 'challenge-tapComplete';
-const LISTEN_COMPREHENSION = 'challenge-listenComprehension';
-const READ_COMPREHENSION = 'challenge-readComprehension';
-const NAME = 'challenge-name';
-const SPEAK = 'challenge-speak';
-const LISTEN_TAP = 'challenge-listenTap';
+const DIALOGUE = 'challenge-dialogue';
+const FORM = 'challenge-form';
+const GAP_FILL = 'challenge-gapFill';
 const LISTEN = 'challenge-listen';
+const LISTEN_COMPREHENSION = 'challenge-listenComprehension';
+const LISTEN_TAP = 'challenge-listenTap';
+const MATCH = 'challenge-match';
+const NAME = 'challenge-name';
+const READ_COMPREHENSION = 'challenge-readComprehension';
+const SPEAK = 'challenge-speak';
+const TAP_COMPLETE = 'challenge-tapComplete';
 const TAP_CLOZE = 'challenge-tapCloze';
 const TAP_CLOZE_TABLE = 'challenge-tapClozeTable';
-const MATCH = 'challenge-match';
+const TRANSLATE = 'challenge-translate';
+const TYPE_CLOZE = 'challenge-typeCloze';
+
 const TIP = 'tip';
 
 // Print nice debug statements
@@ -253,6 +255,7 @@ function readConfig () {
   configChallenge(LISTEN, 'cl', true, null, null);
   configChallenge(LISTEN_COMPREHENSION, 'clc', null, true, null);
   configChallenge(LISTEN_TAP, 'clt', true, true, null);
+  configChallenge(MATCH, 'cm', null, true, null);
   configChallenge(NAME, 'cn', true, null, null);
   configChallenge(READ_COMPREHENSION, 'crc', true, false, false);
   configChallenge(SPEAK, 'cs', true, null, null);
@@ -260,7 +263,8 @@ function readConfig () {
   configChallenge(TAP_CLOZE_TABLE, 'ctct', false, null, true);
   configChallenge(TAP_COMPLETE, 'ctc', true, false, true);
   configChallenge(TRANSLATE, 'ct', true, true, null);
-  configChallenge(MATCH, 'cm', null, true, null);
+  configChallenge(TYPE_CLOZE, 'ctyc', true, null, false);
+
   configChallenge(TIP, 't', false, false, false);
 
   // auto/click/autointro default: true/false, if not used: null
@@ -292,6 +296,7 @@ function readConfig () {
 
 // adds config to the page
 function addConfig () {
+  const nameWidth = '29ch';
   if (!document.querySelector('#hearEverythingGear') && document.querySelector('[role="progressbar"]')) {
     const configButton = document.createElement('button');
     configButton.setAttribute('id', 'hearEverythingGear');
@@ -310,9 +315,10 @@ function addConfig () {
     const styleCheckbox = 'style="vertical-align: bottom;"';
     const configMute = `
           <div class="QowCP">
-            <div id="config-voice">Duo Voice:
+            <div id="config-duo-voice" style="border: none; padding: 3px;">
               <div class="myOptions">
-                <span><input type="checkbox" id="he_muteduo" value="muteduo" ${styleCheckbox}></input><label for="he_muteduo"> mute (beta)</label></span>
+                <span style="width: ${nameWidth};">Duo Voice:</span>
+                <span><input type="checkbox" id="he_muteduo" value="muteduo" ${styleCheckbox}></input><label for="he_muteduo"> mute</label></span>
                 <span></span>
                 <span></span>
               </div>
@@ -334,18 +340,20 @@ function addConfig () {
     const configTapClozeTable = createConfigOption(TAP_CLOZE_TABLE, 'ctct', true, false, true);
     const configTapComplete = createConfigOption(TAP_COMPLETE, 'ctc', true, true, true);
     const configTranslate = createConfigOption(TRANSLATE, 'ct', true, true, false);
-
-    const configTip = createConfigOption(TIP + ' (beta)', 't', true, true, true);
+    const configTypeCloze = createConfigOption(TYPE_CLOZE, 'ctyc', true, false, false);
 
     configDiv.innerHTML = `
     <div class="_3uS_y eIZ_c" data-test="config-popout" style="--margin:20px;">
       <div class="_2O14B _2XlFZ _1v2Gj WCcVn" style="z-index: 1;">
         <div class="_1KUxv _1GJUD _3lagd SSzTP" style="width: auto;"><div class="_1cv-y"></div>
         <div class="QowCP">
-          <div class="_1m77f" style="text-align: center">Language &nbsp;
-            <select style="background-color: #ffc800; color: white;" id="configLanguage">
-            ${options}
-            </select>
+          <div style="border: none; padding: 3px;">
+            <div class="myOptions">
+              <span style="width: ${nameWidth};">Language:</span>
+              <span style="width: 45ch;"><select style="background-color: #ffc800; color: white; width: 45ch;" id="configLanguage">
+              ${options}
+              </select></span>
+            </div>
           </div>
         </div>
         <div class="QowCP" id="he_configChallenges">
@@ -353,6 +361,7 @@ function addConfig () {
 .myOptions {
   display: flex;
   justify-content: space-around;
+  text-align: left;
 }
 .myOptions span {
   width: 15ch;
@@ -372,7 +381,7 @@ function addConfig () {
           ${configTapClozeTable}        
           ${configTapComplete}
           ${configTranslate}
-          ${configTip}
+          ${configTypeCloze}
           ${configMute}
         </div>
       </div>
@@ -397,7 +406,7 @@ function addConfig () {
     });
   }
   if (document.querySelector('#hearEverythingGear') && document.querySelector('[role="progressbar"]')) {
-    highlightConfig([DIALOGUE, FORM, GAP_FILL, LISTEN, LISTEN_COMPREHENSION, LISTEN_TAP, MATCH, NAME, READ_COMPREHENSION, SPEAK, TAP_CLOZE_TABLE, TAP_COMPLETE, TRANSLATE]);
+    highlightConfig();
   }
 
   // builds a configBlock
@@ -422,8 +431,9 @@ function addConfig () {
     if (click === true) clickSpan = `<input type="checkbox" id="he_${prefix}_click" value="readoptions" ${styleCheckbox}></input><label for="he_${prefix}_click"> read options</label></span>`;
     if (intro === true) introSpan = `<input type="checkbox" id="he_${prefix}_autointro" value="autointro" ${styleCheckbox}></input><label for="he_${prefix}_autointro"> auto intro</label></span>`;
     return `<div class="QowCP">
-            <div id="config-${challengeName}">${name}:
+            <div class="myConfig" id="config-${challengeName}">
               <div class="myOptions">
+                <span style="width: ${nameWidth};">${name}:</span>
                 <span>${autoSpan}</span>
                 <span>${clickSpan}</span>
                 <span>${introSpan}</span>
@@ -442,11 +452,13 @@ function addConfig () {
 
   // highlights the current challenge config
   // list = array
-  function highlightConfig (list) {
-    list.forEach((entry) => {
-      document.querySelector('#config-' + entry).style = 'border: none; padding: 3px;';
+  function highlightConfig () {
+    const challenge = (page.challenge === COMPLETE_REVERSE_TRANSLATION) ? TRANSLATE : page.challenge;
+    const allConfigs = document.querySelectorAll('.myConfig');
+    allConfigs.forEach((entry) => {
+      entry.style = 'border: none; padding: 3px;';
     });
-    const element = document.querySelector('#config-' + page.challenge);
+    const element = document.querySelector('#config-' + challenge);
     if (element !== null) element.style = 'border: 1px solid gray; border-radius: 2px; padding: 3px;';
   }
 }
@@ -492,6 +504,7 @@ function start () {
     if (page.challenge === TAP_CLOZE_TABLE) setupTapClozeTable();
     if (page.challenge === TAP_COMPLETE) setupTapComplete();
     if (page.challenge === (TRANSLATE || LISTEN)) setupTranslate();
+    if (page.challenge === TYPE_CLOZE) setupTypeCloze();
     if (!page.challenge && document.querySelector(CHALLENGE_JUDGE_TEXT)) setupTip();
   }
 
@@ -504,6 +517,31 @@ function start () {
       page.isNewPage = false;
       page.isOptionSpeechAdded = false;
     }
+  }
+}
+
+function setupCompleteReverseTranslation () {
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeCompleteReverseTranslation(), config.he_ct_auto);
+
+  function prepareChallengeCompleteReverseTranslation () {
+    let read;
+    if (page.isRightAnswer) {
+      const tiParent = document.querySelector(TEXT_INPUT_QS).parentNode;
+      tiParent.innerText = document.querySelector(TEXT_INPUT_QS).value;
+      read = tiParent.parentNode.innerText;
+    }
+    if (page.isWrongAnswer || page.isRightAnswerTypo) {
+      const answer = document.querySelector(ANSWER_CLASS);
+      if (answer.lastElementChild) {
+        read = answer.lastElementChild.innerText;
+      } else {
+        read = answer.innerText;
+      }
+    }
+    if (page.hasSpeakerButton) {
+      read = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
+    }
+    return read;
   }
 }
 
@@ -808,15 +846,16 @@ function setupTapComplete () {
   }
 }
 
-function setupCompleteReverseTranslation () {
-  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeCompleteReverseTranslation(), config.he_ct_auto);
+function setupTypeCloze () {
+  if (page.isAnswerVisible) renderAnswerSpeakButton(prepareChallengeTypeCloze(), config.he_ctyc_auto);
 
-  function prepareChallengeCompleteReverseTranslation () {
+  function prepareChallengeTypeCloze () {
     let read;
     if (page.isRightAnswer) {
-      const tiParent = document.querySelector(TEXT_INPUT_QS).parentNode;
-      tiParent.innerText = document.querySelector(TEXT_INPUT_QS).value;
-      read = tiParent.parentNode.innerText;
+      const htParent = document.querySelector(HINT_TOKEN_QS).parentNode.parentNode;
+      const input = htParent.querySelector('input');
+      input.parentNode.innerText = input.value;
+      read = htParent.innerText.replaceAll('\n', '');
     }
     if (page.isWrongAnswer || page.isRightAnswerTypo) {
       const answer = document.querySelector(ANSWER_CLASS);
@@ -825,9 +864,6 @@ function setupCompleteReverseTranslation () {
       } else {
         read = answer.innerText;
       }
-    }
-    if (page.hasSpeakerButton) {
-      read = document.querySelector(HINT_TOKEN_QS).parentNode.innerText;
     }
     return read;
   }
