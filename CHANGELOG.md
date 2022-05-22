@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.69.1
+
+- replaced window.onload with addEventListener to allow other scripts to trigger this as well
+
 ## 0.69
 
 ### added

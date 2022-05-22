@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Duolingo HearEverything
 // @namespace    http://tampermonkey.net/
-// @version      0.69
+// @version      0.69.1
 // @description  Reads aloud most sentences in Duo's challenges.
 // @author       Esh
 // @match        https://*.duolingo.com/*
@@ -10,7 +10,7 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-const VERSION = '0.69 --- 1 ---';
+const VERSION = '0.69.1 --- 1 ---';
 
 const LOG_STRING = 'Duolingo HearEverything: ';
 let voiceSelect;
@@ -198,7 +198,7 @@ function dataTestIs (token) {
   // eslint-disable-next-line no-undef
 })(Howl.prototype.play);
 
-window.onload = function () {
+window.addEventListener('load', function () {
   'use strict';
   debug(VERSION);
   voices = window.speechSynthesis.getVoices();
@@ -208,7 +208,7 @@ window.onload = function () {
     subtree: true
   });
   debug('MutationObserver running');
-};
+});
 
 // toggles visibility
 function togglePopout (id) {
